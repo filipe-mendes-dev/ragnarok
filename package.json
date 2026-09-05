@@ -19,6 +19,10 @@
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
         "test:watch": "vitest",
+        "infra:up": "docker compose -f compose.dev.yml up -d",
+        "infra:down": "docker compose -f compose.dev.yml down",
+        "infra:logs": "docker compose -f compose.dev.yml logs -f",
+        "infra:status": "docker compose -f compose.dev.yml ps",
         "check": "npm run lint && npm run typecheck && npm run test"
     },
     "dependencies": {

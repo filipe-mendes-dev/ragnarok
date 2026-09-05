@@ -22,7 +22,7 @@ Gate: a clean install can lint, type-check, test, build, and serve the health en
 
 Target: Days 1-2
 
-- [ ] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
+- [x] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
 - [ ] Configure Drizzle and committed migrations.
 - [ ] Implement initial user, document, chunk, conversation, message, retrieval-run, and candidate tables only as needed.
 - [ ] Verify database persistence across container restarts.
