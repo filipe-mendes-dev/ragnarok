@@ -8,13 +8,13 @@ Complete phases in order. A phase is complete when its observable outcome and ve
 
 Target: Day 1
 
-- [ ] Initialize Git with `main` as the default branch.
-- [ ] Scaffold Next.js App Router with strict TypeScript, npm, Tailwind, ESLint, and `src/`.
-- [ ] Add canonical `lint`, `typecheck`, `test`, `check`, and `build` scripts.
-- [ ] Add semantic CSS variables and mobile-first base styles.
-- [ ] Add Vitest; defer Playwright configuration until the first user flow exists.
+- [x] Initialize Git with `main` as the default branch.
+- [x] Scaffold Next.js App Router with strict TypeScript, npm, Tailwind, ESLint, and `src/`.
+- [x] Add canonical `lint`, `typecheck`, `test`, `check`, and `build` scripts.
+- [x] Add semantic CSS variables and mobile-first base styles.
+- [x] Add Vitest; defer Playwright configuration until the first user flow exists.
 - [ ] Add `.env.example` and validate server environment variables.
-- [ ] Add a basic health endpoint.
+- [x] Add a basic health endpoint.
 
 Gate: a clean install can lint, type-check, test, build, and serve the health endpoint.
 
