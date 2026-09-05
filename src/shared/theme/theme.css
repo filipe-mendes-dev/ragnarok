@@ -1,0 +1,32 @@
+:root {
+  --app-color-background: #f7f7f5;
+  --app-color-surface: #ffffff;
+  --app-color-surface-muted: #efefeb;
+  --app-color-text: #171717;
+  --app-color-text-muted: #666661;
+  --app-color-border: #deded8;
+  --app-color-accent: #335cff;
+  --app-color-accent-contrast: #ffffff;
+  --app-color-danger: #b42318;
+  --app-font-family-sans: ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, sans-serif;
+  --app-font-size-body: 1rem;
+  --app-line-height-body: 1.5;
+  --app-radius-control: 0.5rem;
+  --app-radius-panel: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--app-color-background);
+  --color-surface: var(--app-color-surface);
+  --color-surface-muted: var(--app-color-surface-muted);
+  --color-foreground: var(--app-color-text);
+  --color-muted-foreground: var(--app-color-text-muted);
+  --color-border: var(--app-color-border);
+  --color-accent: var(--app-color-accent);
+  --color-accent-foreground: var(--app-color-accent-contrast);
+  --color-danger: var(--app-color-danger);
+  --font-sans: var(--app-font-family-sans);
+  --radius-control: var(--app-radius-control);
+  --radius-panel: var(--app-radius-panel);
+}
