@@ -35,6 +35,7 @@
 ## Quality
 
 - Add dependencies only when they solve a current requirement.
+- Keep unit tests in `tests/unit` and integration tests in `tests/integration`, mirroring the relevant `src` path.
 - Add focused tests for business rules, authorization boundaries, retrieval behavior, and failure handling.
 - Before finalizing implementation changes, run the relevant subset of `npm run check`, tests, and `npm run build`.
 - Never commit secrets, `.env` files, uploaded documents, database volumes, or private evaluation data.
