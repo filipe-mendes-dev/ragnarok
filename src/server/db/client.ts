@@ -28,3 +28,5 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export const database = drizzle({ client: databasePool, schema });
+
+export type Database = typeof database;
