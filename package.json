@@ -23,6 +23,8 @@
         "infra:down": "docker compose -f compose.dev.yml down",
         "infra:logs": "docker compose -f compose.dev.yml logs -f",
         "infra:status": "docker compose -f compose.dev.yml ps",
+        "auth:schema": "auth generate --config ./src/server/auth/auth.ts --output ./src/server/db/auth-schema.ts --yes",
+        "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "check": "npm run lint && npm run typecheck && npm run test"
     },
@@ -42,6 +44,7 @@
         "@types/pg": "^8.23.1",
         "@types/react": "^19",
         "@types/react-dom": "^19",
+        "auth": "^1.7.3",
         "drizzle-kit": "^0.31.10",
         "eslint": "^9",
         "eslint-config-next": "16.3.4",

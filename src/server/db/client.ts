@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import { getServerEnvironment } from "@/server/config/env";
+import * as schema from "@/server/db/schema";
 
 interface DatabaseGlobal {
     databasePool?: Pool;
@@ -26,4 +27,4 @@ if (process.env.NODE_ENV !== "production") {
     databaseGlobal.databasePool = databasePool;
 }
 
-export const database = drizzle({ client: databasePool });
+export const database = drizzle({ client: databasePool, schema });
