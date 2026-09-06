@@ -13,7 +13,7 @@ Target: Day 1
 - [x] Add canonical `lint`, `typecheck`, `test`, `check`, and `build` scripts.
 - [x] Add semantic CSS variables and mobile-first base styles.
 - [x] Add Vitest; defer Playwright configuration until the first user flow exists.
-- [ ] Add `.env.example` and validate server environment variables.
+- [x] Add `.env.example` and validate server environment variables.
 - [x] Add a basic health endpoint.
 
 Gate: a clean install can lint, type-check, test, build, and serve the health endpoint.
@@ -22,7 +22,7 @@ Gate: a clean install can lint, type-check, test, build, and serve the health en
 
 Target: Days 1-2
 
-- [ ] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
+- [x] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
 - [ ] Configure Drizzle and committed migrations.
 - [ ] Implement initial user, document, chunk, conversation, message, retrieval-run, and candidate tables only as needed.
 - [ ] Verify database persistence across container restarts.
