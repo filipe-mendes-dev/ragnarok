@@ -1,13 +1,7 @@
-import { LandingPage } from "@/features/landing/LandingPage";
-import { getCurrentUser } from "@/server/auth/session";
-import { redirect } from "next/navigation";
-
-export default async function Home() {
-    const user = await getCurrentUser();
-
-    if (user) {
-        redirect("/documents");
-    }
-
-    return <LandingPage />;
+export default function Home() {
+  return (
+    <main>
+      <div>Hello world!</div>
+    </main>
+  );
 }
