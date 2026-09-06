@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --app-color-background: #f7f7f5;
   --app-color-surface: #ffffff;
   --app-color-surface-muted: #efefeb;
@@ -14,6 +15,21 @@
   --app-line-height-body: 1.5;
   --app-radius-control: 0.5rem;
   --app-radius-panel: 0.75rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --app-color-background: #090b0f;
+    --app-color-surface: #11151b;
+    --app-color-surface-muted: #181d25;
+    --app-color-text: #f2f4f7;
+    --app-color-text-muted: #98a2b3;
+    --app-color-border: #2a313c;
+    --app-color-accent: #7895ff;
+    --app-color-accent-contrast: #080b10;
+    --app-color-danger: #ff8a80;
+  }
 }
 
 @theme inline {
