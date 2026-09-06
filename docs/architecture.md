@@ -66,14 +66,11 @@ ragnarok/
 │   │   ├── db/
 │   │   │   ├── client.ts
 │   │   │   └── schema/           # Drizzle tables grouped by capability
-│   │   ├── documents/
-│   │   ├── ingestion/
+│   │   ├── modules/               # Business capabilities
+│   │   │   ├── documents/
+│   │   │   ├── ingestion/
+│   │   │   └── rag/
 │   │   ├── queue/
-│   │   ├── rag/
-│   │   │   ├── retrieval/
-│   │   │   ├── context/
-│   │   │   ├── generation/
-│   │   │   └── citations/
 │   │   ├── storage/
 │   │   └── observability/
 │   ├── shared/                    # Environment-neutral schemas and interfaces
@@ -132,6 +129,8 @@ Owns trusted Node.js behavior:
 
 The directory name is a human convention, not a bundler rule. Next-specific modules that must never enter a Client Component graph use `import "server-only"`. Modules shared with the separately compiled worker do not use that marker unconditionally because `server-only` relies on the React server export condition supplied by the Next.js compiler. Directory import rules and dependency checks protect the complete `src/server` boundary.
 
+`src/server/modules` groups business capabilities such as documents, ingestion, and RAG. Infrastructure integrations such as the database client, queue, and object storage remain outside that directory. A module may use several infrastructure adapters, and a database table does not automatically require its own module or service.
+
 ### `src/shared`
 
 Contains code that is safe in both browser and server dependency graphs:
@@ -145,7 +144,7 @@ It does not import database clients, Node-only APIs, secrets, BullMQ, or provide
 
 ### `src/worker`
 
-Bootstraps the separately built ingestion worker. The entry point performs process setup and delegates jobs to application workflows in `src/server/ingestion`.
+Bootstraps the separately built ingestion worker. The entry point performs process setup and delegates jobs to application workflows in `src/server/modules/ingestion`.
 
 ## Client and server dependency graphs
 
@@ -217,7 +216,7 @@ Small barrels are allowed for a component's intentional public API. Mixed barrel
 ```ts
 // Forbidden
 export { DocumentList } from "./DocumentList";
-export { deleteDocument } from "@/server/documents/delete-document";
+export { deleteDocument } from "@/server/modules/documents/delete-document";
 ```
 
 Server and client entry points remain separate. Cross-layer imports prefer explicit module paths when that makes the runtime boundary clearer.

@@ -52,10 +52,11 @@ Gate: two test users cannot read or mutate each other's resources, including by 
 
 Target: Day 3
 
-- [ ] Submit and edit plain-text documents.
+- [x] Submit and list owned plain-text documents.
+- [ ] Edit submitted plain-text documents.
 - [ ] Upload text-based PDFs with configurable size and extraction limits.
 - [ ] Store original PDF bytes in object storage and metadata in PostgreSQL.
-- [ ] List and delete owned documents.
+- [ ] Delete owned documents.
 - [ ] Expose document state in the UI.
 
 Gate: a user can create, list, edit where allowed, and delete private sources without synchronous ingestion.
