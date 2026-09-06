@@ -2,18 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { ZodError } from "zod";
 
-import { parseCreateDocumentInput } from "@/server/documents/document-input";
+import { parseCreateTextDocumentInput } from "@/server/modules/documents/document-input";
 
-describe("parseCreateDocumentInput", () => {
+describe("parseCreateTextDocumentInput", () => {
     it("normalizes a valid text document source", () => {
-        const source = parseCreateDocumentInput({
-            sourceType: "text",
+        const source = parseCreateTextDocumentInput({
             sourceText: "  Useful source text  ",
             title: "  Notes  ",
         });
 
         expect(source).toEqual({
-            sourceType: "text",
             sourceText: "Useful source text",
             title: "Notes",
         });
@@ -21,22 +19,18 @@ describe("parseCreateDocumentInput", () => {
 
     it("rejects a text source without meaningful content", () => {
         expect(() =>
-            parseCreateDocumentInput({
-                sourceType: "text",
+            parseCreateTextDocumentInput({
                 sourceText: "   ",
                 title: "Notes",
             }),
         ).toThrow(ZodError);
     });
 
-    it("rejects a PDF source without an object-storage key", () => {
+    it("rejects document text above the accepted limit", () => {
         expect(() =>
-            parseCreateDocumentInput({
-                originalFilename: "source.pdf",
-                sizeBytes: 1_024,
-                sourceType: "pdf",
-                storageKey: "",
-                title: "Source",
+            parseCreateTextDocumentInput({
+                sourceText: "a".repeat(100_001),
+                title: "Notes",
             }),
         ).toThrow(ZodError);
     });

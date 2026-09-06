@@ -1,15 +1,15 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { createDocumentRepository } from "@/server/documents/document-repository";
-import { createDocumentService } from "@/server/documents/document-service";
+import { createDocumentRepository } from "@/server/modules/documents/document-repository";
+import { createDocumentService } from "@/server/modules/documents/document-service";
 
-import { createTextDocumentFixture } from "../../../fixtures/documents";
-import { createUserFixture } from "../../../fixtures/users";
-import { deleteTestUsers } from "../../support/cleanup";
-import { createIntegrationDatabase } from "../../support/database";
-import { readPersistedDocument } from "../../support/read-documents";
-import { seedTextDocument } from "../../support/seed-documents";
-import { seedUser } from "../../support/seed-users";
+import { createTextDocumentFixture } from "../../../../fixtures/documents";
+import { createUserFixture } from "../../../../fixtures/users";
+import { deleteTestUsers } from "../../../support/cleanup";
+import { createIntegrationDatabase } from "../../../support/database";
+import { readPersistedDocument } from "../../../support/read-documents";
+import { seedTextDocument } from "../../../support/seed-documents";
+import { seedUser } from "../../../support/seed-users";
 
 const testUserIds: string[] = [];
 const { database, databasePool } = createIntegrationDatabase();
@@ -91,16 +91,18 @@ describe("documentService", () => {
         });
     });
 
-    describe("createDocument", () => {
+    describe("createTextDocument", () => {
         it("persists a valid text source without object-storage fields", async () => {
             const owner = await arrangeUser("Document owner");
             const input = {
-                sourceType: "text" as const,
                 sourceText: "Persisted source text",
                 title: "Persisted notes",
             };
 
-            const result = await documentService.createDocument(owner.id, input);
+            const result = await documentService.createTextDocument(
+                owner.id,
+                input,
+            );
             const persistedDocument = await readPersistedDocument(
                 database,
                 result.id,
@@ -108,7 +110,7 @@ describe("documentService", () => {
 
             expect(persistedDocument).toMatchObject({
                 userId: owner.id,
-                sourceType: input.sourceType,
+                sourceType: "text",
                 sourceText: input.sourceText,
                 title: input.title,
                 storageKey: null,

@@ -1,14 +1,14 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { createDocumentRepository } from "@/server/documents/document-repository";
+import { createDocumentRepository } from "@/server/modules/documents/document-repository";
 
-import { createTextDocumentFixture } from "../../../fixtures/documents";
-import { createUserFixture } from "../../../fixtures/users";
-import { deleteTestUsers } from "../../support/cleanup";
-import { createIntegrationDatabase } from "../../support/database";
-import { readPersistedDocument } from "../../support/read-documents";
-import { seedTextDocument } from "../../support/seed-documents";
-import { seedUser } from "../../support/seed-users";
+import { createTextDocumentFixture } from "../../../../fixtures/documents";
+import { createUserFixture } from "../../../../fixtures/users";
+import { deleteTestUsers } from "../../../support/cleanup";
+import { createIntegrationDatabase } from "../../../support/database";
+import { readPersistedDocument } from "../../../support/read-documents";
+import { seedTextDocument } from "../../../support/seed-documents";
+import { seedUser } from "../../../support/seed-users";
 
 const testUserIds: string[] = [];
 const { database, databasePool } = createIntegrationDatabase();
