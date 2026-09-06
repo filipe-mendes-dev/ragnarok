@@ -1,4 +1,4 @@
-import type { DocumentRow } from "@/server/db/document-schema";
+import type { DocumentRow } from "@/server/db/schema/documents";
 import type { DocumentRepository } from "@/server/documents/document-repository";
 import type { CreateDocumentInput } from "@/server/documents/document-input";
 

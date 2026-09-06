@@ -5,7 +5,7 @@ import {
     document,
     type DocumentRow,
     type NewDocumentRow,
-} from "@/server/db/document-schema";
+} from "@/server/db/schema/documents";
 
 export function createDocumentRepository(databaseClient: Database) {
     async function findByIdForUser(

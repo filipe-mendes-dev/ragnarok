@@ -4,7 +4,7 @@ import type { Database } from "@/server/db/client";
 import {
     document,
     type DocumentRow,
-} from "@/server/db/document-schema";
+} from "@/server/db/schema/documents";
 
 export async function readPersistedDocument(
     database: Database,

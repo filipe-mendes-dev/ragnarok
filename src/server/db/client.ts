@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import { getServerEnvironment } from "@/server/config/env";
-import * as schema from "@/server/db/schema";
+import * as schema from "@/server/db/schema/index";
 
 interface DatabaseGlobal {
     databasePool?: Pool;

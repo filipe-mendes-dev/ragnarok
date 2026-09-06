@@ -64,6 +64,8 @@ ragnarok/
 │   ├── server/                    # Trusted Node.js modules
 │   │   ├── auth/
 │   │   ├── db/
+│   │   │   ├── client.ts
+│   │   │   └── schema/           # Drizzle tables grouped by capability
 │   │   ├── documents/
 │   │   ├── ingestion/
 │   │   ├── queue/

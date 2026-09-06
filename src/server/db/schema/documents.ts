@@ -11,7 +11,7 @@ import {
     uuid,
 } from "drizzle-orm/pg-core";
 
-import { user } from "@/server/db/auth-schema";
+import { user } from "@/server/db/schema/auth";
 import { DOCUMENT_SOURCE_TYPES } from "@/server/documents/document-input";
 
 const DOCUMENT_STATUSES = [

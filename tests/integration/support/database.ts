@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { inject } from "vitest";
 
-import * as schema from "@/server/db/schema";
+import * as schema from "@/server/db/schema/index";
 
 export function createIntegrationDatabase() {
     const databasePool = new Pool({

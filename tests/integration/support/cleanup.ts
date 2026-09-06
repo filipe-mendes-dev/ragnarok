@@ -1,6 +1,6 @@
 import { inArray } from "drizzle-orm";
 
-import { user } from "@/server/db/auth-schema";
+import { user } from "@/server/db/schema/auth";
 import type { Database } from "@/server/db/client";
 
 export async function deleteTestUsers(

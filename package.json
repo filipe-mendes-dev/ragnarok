@@ -24,7 +24,7 @@
         "infra:down": "docker compose -f compose.dev.yml down",
         "infra:logs": "docker compose -f compose.dev.yml logs -f",
         "infra:status": "docker compose -f compose.dev.yml ps",
-        "auth:schema": "auth generate --config ./src/server/auth/auth.ts --output ./src/server/db/auth-schema.ts --yes",
+        "auth:schema": "auth generate --config ./src/server/auth/auth.ts --output ./src/server/db/schema/auth.ts --yes",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "check": "npm run lint && npm run typecheck && npm run test && npm run test:integration"

@@ -1,4 +1,4 @@
-import { user } from "@/server/db/auth-schema";
+import { user } from "@/server/db/schema/auth";
 import type { Database } from "@/server/db/client";
 
 import type { UserFixture } from "../../fixtures/users";

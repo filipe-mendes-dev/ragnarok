@@ -9,7 +9,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import type { TestProject } from "vitest/node";
 
-import * as schema from "@/server/db/schema";
+import * as schema from "@/server/db/schema/index";
 
 const POSTGRES_IMAGE = "pgvector/pgvector:0.8.6-pg18-bookworm";
 

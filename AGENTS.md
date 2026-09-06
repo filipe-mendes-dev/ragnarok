@@ -45,7 +45,7 @@
 ### Database migrations
 
 - Never create or edit Drizzle-generated migration SQL or snapshot files by hand.
-- Change schema definitions under `src/server/db`, then run `npm run db:generate`.
+- Change schema definitions under `src/server/db/schema`, then run `npm run db:generate`.
 - Review generated SQL for intended constraints, destructive operations, and unexpected schema changes before applying or committing it.
 - Do not inspect generated snapshot JSON unless migration generation or schema history requires debugging.
 - Add custom data-migration SQL only when required, call it out explicitly, and keep Drizzle metadata generator-owned.

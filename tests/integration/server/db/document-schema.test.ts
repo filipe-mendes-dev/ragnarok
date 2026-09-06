@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
-import { document } from "@/server/db/document-schema";
+import { document } from "@/server/db/schema/documents";
 
 import { createUserFixture } from "../../../fixtures/users";
 import { deleteTestUsers } from "../../support/cleanup";

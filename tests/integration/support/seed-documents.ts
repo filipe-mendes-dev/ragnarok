@@ -1,5 +1,5 @@
 import type { Database } from "@/server/db/client";
-import { document } from "@/server/db/document-schema";
+import { document } from "@/server/db/schema/documents";
 
 import type { TextDocumentFixture } from "../../fixtures/documents";
 
