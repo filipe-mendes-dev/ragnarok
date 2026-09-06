@@ -194,7 +194,7 @@ interface DocumentRow {
 interface DocumentSummaryDto {
   id: string;
   title: string;
-  status: "uploaded" | "queued" | "processing" | "completed" | "failed";
+  status: "uploading" | "uploaded" | "queued" | "processing" | "completed" | "failed";
   createdAt: string;
 }
 ```

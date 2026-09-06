@@ -15,6 +15,7 @@ import { user } from "@/server/db/schema/auth";
 import { DOCUMENT_SOURCE_TYPES } from "@/shared/documents";
 
 const DOCUMENT_STATUSES = [
+    "uploading",
     "uploaded",
     "queued",
     "processing",
