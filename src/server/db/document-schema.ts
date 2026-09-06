@@ -12,10 +12,15 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { user } from "@/server/db/auth-schema";
-import {
-    DOCUMENT_SOURCE_TYPES,
-    DOCUMENT_STATUSES,
-} from "@/server/documents/document-source";
+import { DOCUMENT_SOURCE_TYPES } from "@/server/documents/document-input";
+
+const DOCUMENT_STATUSES = [
+    "uploaded",
+    "queued",
+    "processing",
+    "completed",
+    "failed",
+] as const;
 
 export const documentSourceType = pgEnum(
     "document_source_type",
