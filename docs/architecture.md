@@ -35,6 +35,7 @@ V1 does not introduce a separate Fastify, NestJS, or Python API because there is
 | Queue coordination | Redis | BullMQ job state and coordination, not authoritative business state |
 | Object storage | S3-compatible storage | Original uploaded PDF bytes |
 | Unit/integration tests | Vitest | Fast tests for application and retrieval behavior |
+| Integration infrastructure | Testcontainers | Disposable PostgreSQL/pgvector instances with migrations applied from scratch |
 | End-to-end tests | Playwright | Critical browser flows once the first complete flow exists |
 | Local infrastructure | Docker Compose | Reproducible PostgreSQL, Redis, and object storage |
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
@@ -250,6 +251,7 @@ Services own transactions that span multiple repositories or workflow steps. Rep
 ```text
 Host: Next.js dev server + worker watch process
 Docker: PostgreSQL/pgvector + Redis + S3-compatible local storage
+Integration tests: disposable PostgreSQL/pgvector container managed by Testcontainers
 ```
 
 This preserves fast refresh and debugger access while making stateful infrastructure reproducible.

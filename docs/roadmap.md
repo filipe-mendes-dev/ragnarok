@@ -27,7 +27,8 @@ Target: Days 1-2
 - [x] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
 - [x] Configure Drizzle and committed migrations.
 - [x] Add Better Auth user, account, session, verification, and rate-limit tables.
-- [ ] Add document and chunk tables when their ingestion requirements are implemented.
+- [x] Add the owned document table with source-specific database constraints.
+- [ ] Add the chunk table when ingestion and embedding requirements are implemented.
 - [ ] Add conversation, message, retrieval-run, and candidate tables when the question-answering flow requires them.
 - [ ] Verify database persistence across container restarts.
 
@@ -41,8 +42,9 @@ Target: Day 2
 
 - [x] Select Better Auth with email/password and GitHub OAuth support.
 - [x] Implement sign in, sign out, protected routes, and cached server-side identity lookup.
-- [ ] Add direct `userId` ownership to private resources.
-- [ ] Test cross-user document access at the repository/query boundary.
+- [x] Add direct `userId` ownership to document resources.
+- [x] Test cross-user document reads at the repository/query boundary.
+- [ ] Test cross-user document mutations when mutation workflows are implemented.
 
 Gate: two test users cannot read or mutate each other's resources, including by submitting another user's identifier manually.
 
