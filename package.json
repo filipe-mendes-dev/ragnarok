@@ -23,10 +23,13 @@
         "infra:down": "docker compose -f compose.dev.yml down",
         "infra:logs": "docker compose -f compose.dev.yml logs -f",
         "infra:status": "docker compose -f compose.dev.yml ps",
+        "auth:schema": "auth generate --config ./src/server/auth/auth.ts --output ./src/server/db/auth-schema.ts --yes",
+        "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "check": "npm run lint && npm run typecheck && npm run test"
     },
     "dependencies": {
+        "better-auth": "^1.7.3",
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.2",
         "next": "16.3.4",
@@ -41,11 +44,12 @@
         "@types/pg": "^8.23.1",
         "@types/react": "^19",
         "@types/react-dom": "^19",
+        "auth": "^1.7.3",
         "drizzle-kit": "^0.31.10",
         "eslint": "^9",
         "eslint-config-next": "16.3.4",
         "tailwindcss": "^4",
         "typescript": "^5",
-        "vitest": "^5.0.0"
+        "vitest": "^4.1.11"
     }
 }
