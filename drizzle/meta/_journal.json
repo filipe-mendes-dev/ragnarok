@@ -15,6 +15,13 @@
       "when": 1788705863753,
       "tag": "0001_brainy_purple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788726620032,
+      "tag": "0002_loose_vance_astro",
+      "breakpoints": true
     }
   ]
 }
