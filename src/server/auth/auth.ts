@@ -1,18 +1,18 @@
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { betterAuth } from "better-auth";
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { betterAuth } from 'better-auth';
 
-import { getAuthenticationEnvironment } from "@/server/auth/auth-env";
-import { database } from "@/server/db/client";
-import * as schema from "@/server/db/schema";
+import { getAuthenticationEnvironment } from '@/server/auth/auth-env';
+import { database } from '@/server/db/client';
+import * as schema from '@/server/db/schema';
 
 const environment = getAuthenticationEnvironment();
 
 export const auth = betterAuth({
-    appName: "RAGnarok",
+    appName: 'RAGnarok',
     baseURL: environment.BETTER_AUTH_URL,
     secret: environment.BETTER_AUTH_SECRET,
     database: drizzleAdapter(database, {
-        provider: "pg",
+        provider: 'pg',
         schema,
     }),
     emailAndPassword: {
@@ -25,7 +25,13 @@ export const auth = betterAuth({
             clientSecret: environment.GITHUB_CLIENT_SECRET,
         },
     },
+    account: {
+        encryptOAuthTokens: true,
+        accountLinking: {
+            disableImplicitLinking: true,
+        },
+    },
     rateLimit: {
-        storage: "database",
+        storage: 'database',
     },
 });
