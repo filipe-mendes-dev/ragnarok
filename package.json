@@ -17,8 +17,9 @@
         "lint": "eslint .",
         "format": "eslint . --fix",
         "typecheck": "tsc --noEmit",
-        "test": "vitest run",
-        "test:watch": "vitest",
+        "test": "vitest run --project unit",
+        "test:integration": "vitest run --project integration",
+        "test:watch": "vitest --project unit",
         "infra:up": "docker compose -f compose.dev.yml up -d",
         "infra:down": "docker compose -f compose.dev.yml down",
         "infra:logs": "docker compose -f compose.dev.yml logs -f",
@@ -26,7 +27,7 @@
         "auth:schema": "auth generate --config ./src/server/auth/auth.ts --output ./src/server/db/auth-schema.ts --yes",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
-        "check": "npm run lint && npm run typecheck && npm run test"
+        "check": "npm run lint && npm run typecheck && npm run test && npm run test:integration"
     },
     "dependencies": {
         "better-auth": "^1.7.3",
@@ -40,6 +41,7 @@
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",
+        "@testcontainers/postgresql": "^12.1.0",
         "@types/node": "^24.13.3",
         "@types/pg": "^8.23.1",
         "@types/react": "^19",
