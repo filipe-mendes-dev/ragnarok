@@ -1,5 +1,7 @@
 # RAGnarok Implementation Roadmap
 
+Last updated: 2026-09-06
+
 ## Working rule
 
 Complete phases in order. A phase is complete when its observable outcome and verification gate pass. Reranking and visual polish are the first items deferred when schedule pressure appears.
@@ -23,8 +25,10 @@ Gate: a clean install can lint, type-check, test, build, and serve the health en
 Target: Days 1-2
 
 - [x] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
-- [ ] Configure Drizzle and committed migrations.
-- [ ] Implement initial user, document, chunk, conversation, message, retrieval-run, and candidate tables only as needed.
+- [x] Configure Drizzle and committed migrations.
+- [x] Add Better Auth user, account, session, verification, and rate-limit tables.
+- [ ] Add document and chunk tables when their ingestion requirements are implemented.
+- [ ] Add conversation, message, retrieval-run, and candidate tables when the question-answering flow requires them.
 - [ ] Verify database persistence across container restarts.
 
 Gate: migrations create the schema from an empty database and the application can read/write a test record.
@@ -35,8 +39,8 @@ Failure test: stop PostgreSQL and confirm the application reports a bounded, obs
 
 Target: Day 2
 
-- [ ] Select a practical authentication library or provider.
-- [ ] Implement sign in, sign out, protected routes, and cached server-side identity lookup.
+- [x] Select Better Auth with email/password and GitHub OAuth support.
+- [x] Implement sign in, sign out, protected routes, and cached server-side identity lookup.
 - [ ] Add direct `userId` ownership to private resources.
 - [ ] Test cross-user document access at the repository/query boundary.
 
