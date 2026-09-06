@@ -42,6 +42,28 @@
 - Use Conventional Commit prefixes. Do not commit unless explicitly requested.
 - No emoji in code comments.
 
+### Database migrations
+
+- Never create or edit Drizzle-generated migration SQL or snapshot files by hand.
+- Change schema definitions under `src/server/db`, then run `npm run db:generate`.
+- Review generated SQL for intended constraints, destructive operations, and unexpected schema changes before applying or committing it.
+- Do not inspect generated snapshot JSON unless migration generation or schema history requires debugging.
+- Add custom data-migration SQL only when required, call it out explicitly, and keep Drizzle metadata generator-owned.
+- Verify committed migrations against a fresh Testcontainers database.
+
+### Database integration tests
+
+- Run database integration tests against disposable Testcontainers infrastructure, never the development database.
+- Apply committed migrations from an empty database before integration tests.
+- Organize service integration tests by service method and name tests after business invariants.
+- Use nested `describe` blocks only when they group multiple tests or clarify a meaningful scenario.
+- Arrange existing state through pure fixtures and focused seed helpers that write directly through Drizzle, bypassing application repositories and services.
+- Use only the service method under test as the action, then verify service-visible results and relevant persisted side effects independently.
+- Build expected values from fixtures, explicit inputs, and controlled timestamps; do not copy the service result into the expected database value.
+- Keep repository tests narrow and cover their persistence contract, ownership filtering, ordering, and non-trivial query behavior.
+- Assert exact affected rows or constraint identifiers when identity and relational behavior matter.
+- Deduplicate test mechanics, not business meaning; helpers must not hide the scenario being protected.
+
 ## Communication
 
 - Respond in English unless Portuguese is explicitly requested.
