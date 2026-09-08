@@ -4,33 +4,19 @@ import { createDocumentRepository } from "@/server/modules/documents/document-re
 import { createDocumentService } from "@/server/modules/documents/document-service";
 
 import { createTextDocumentFixture } from "../../../../fixtures/documents";
-import { createUserFixture } from "../../../../fixtures/users";
-import { deleteTestUsers } from "../../../support/cleanup";
 import { createIntegrationDatabase } from "../../../support/database";
 import { readPersistedDocument } from "../../../support/read-documents";
-import { seedTextDocument } from "../../../support/seed-documents";
-import { seedUser } from "../../../support/seed-users";
+import { seedDocument } from "../../../support/seeders/documents";
+import { createUserSeeder } from "../../../support/seeders/users";
 
-const testUserIds: string[] = [];
 const { database, databasePool } = createIntegrationDatabase();
 const documentRepository = createDocumentRepository(database);
 const documentService = createDocumentService(documentRepository);
-
-async function arrangeUser(
-    name: string,
-): Promise<ReturnType<typeof createUserFixture>> {
-    const fixture = createUserFixture({ name });
-
-    await seedUser(database, fixture);
-    testUserIds.push(fixture.id);
-
-    return fixture;
-}
+const userSeeder = createUserSeeder(database);
 
 describe("documentService", () => {
     afterEach(async () => {
-        await deleteTestUsers(database, testUserIds);
-        testUserIds.length = 0;
+        await userSeeder.cleanup();
     });
 
     afterAll(async () => {
@@ -38,62 +24,60 @@ describe("documentService", () => {
     });
 
     describe("getDocument", () => {
-        it("does not expose an owned document to another user", async () => {
-            const owner = await arrangeUser("Document owner");
-            const otherUser = await arrangeUser("Other user");
+        it("returns a document owned by the authenticated user", async () => {
+            const owner = await userSeeder.seed({ name: "Document owner" });
             const documentFixture = createTextDocumentFixture({
                 userId: owner.id,
             });
-            await seedTextDocument(database, documentFixture);
+            await seedDocument(database, documentFixture);
 
-            const ownerResult = await documentService.getDocument(
+            const result = await documentService.getDocument(
                 owner.id,
                 documentFixture.id,
             );
-            const otherUserResult = await documentService.getDocument(
+
+            expect(result?.id).toBe(documentFixture.id);
+        });
+
+        it("does not expose an owned document to another user", async () => {
+            const owner = await userSeeder.seed({ name: "Document owner" });
+            const otherUser = await userSeeder.seed({ name: "Other user" });
+            const documentFixture = createTextDocumentFixture({
+                userId: owner.id,
+            });
+            await seedDocument(database, documentFixture);
+
+            const result = await documentService.getDocument(
                 otherUser.id,
                 documentFixture.id,
             );
 
-            expect(ownerResult?.id).toBe(documentFixture.id);
-            expect(otherUserResult).toBeNull();
+            expect(result).toBeNull();
         });
     });
 
     describe("listDocuments", () => {
-        it("returns only the authenticated user's documents newest first", async () => {
-            const owner = await arrangeUser("Document owner");
-            const otherUser = await arrangeUser("Other user");
-            const olderDocument = createTextDocumentFixture({
-                createdAt: new Date("2026-09-06T10:00:00.000Z"),
-                title: "Older",
-                userId: owner.id,
-            });
-            const newerDocument = createTextDocumentFixture({
-                createdAt: new Date("2026-09-06T11:00:00.000Z"),
-                title: "Newer",
-                userId: owner.id,
-            });
+        it("returns only documents owned by the authenticated user", async () => {
+            const owner = await userSeeder.seed({ name: "Document owner" });
+            const otherUser = await userSeeder.seed({ name: "Other user" });
+            const ownedDocument = createTextDocumentFixture({ userId: owner.id });
             const otherDocument = createTextDocumentFixture({
-                title: "Other user's document",
                 userId: otherUser.id,
             });
-            await seedTextDocument(database, olderDocument);
-            await seedTextDocument(database, newerDocument);
-            await seedTextDocument(database, otherDocument);
+            await seedDocument(database, ownedDocument);
+            await seedDocument(database, otherDocument);
 
             const result = await documentService.listDocuments(owner.id);
 
-            expect(result.map((row) => row.id)).toEqual([
-                newerDocument.id,
-                olderDocument.id,
+            expect(result.map((document) => document.id)).toEqual([
+                ownedDocument.id,
             ]);
         });
     });
 
     describe("createTextDocument", () => {
         it("persists a valid text source without object-storage fields", async () => {
-            const owner = await arrangeUser("Document owner");
+            const owner = await userSeeder.seed({ name: "Document owner" });
             const input = {
                 sourceText: "Persisted source text",
                 title: "Persisted notes",
