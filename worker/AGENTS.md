@@ -9,3 +9,4 @@
 - Keep the future RabbitMQ entry point thin. Python ingestion services own workflows and transactions; repositories own parameterized SQL.
 - Drizzle remains the sole database migration owner. Do not introduce Python migrations or schema creation at worker startup.
 - Keep tests under `tests/unit` and `tests/integration`, mirroring `src/ragnarok_ingestion`. Database integration tests must use disposable infrastructure and committed migrations.
+- Use pytest as the intended runner once installed. Existing unittest cases can run unchanged under pytest; prefer named test functions, plain assertions, and parametrization for new pytest tests. Explain fixtures before introducing shared setup.

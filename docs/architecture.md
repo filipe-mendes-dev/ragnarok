@@ -25,7 +25,7 @@ V1 does not introduce a separate Fastify, NestJS, or Python API because there is
 | UI | React | Interactive application interface |
 | Languages | Strict TypeScript for web; typed Python 3.14 for ingestion | Web development plus Python document-processing experience |
 | Runtimes | Node.js 24 LTS and Python 3.14 | Separate web and ingestion processes |
-| Package management | npm for web; uv for worker | uv manages Python, the worker environment, and uv.lock; initial lock generation remains pending |
+| Package management | npm for web; uv for worker | uv manages Python, the worker environment, and uv.lock; initial lock generated and inspected |
 | Text splitting | langchain-text-splitters | Local recursive character splitting; no model API required |
 | Styling | Tailwind CSS with semantic CSS variables | Fast dashboard implementation with a controlled token boundary |
 | Database | PostgreSQL | Durable application, document, conversation, and trace state |
@@ -34,7 +34,7 @@ V1 does not introduce a separate Fastify, NestJS, or Python API because there is
 | Lexical search | PostgreSQL full-text search | Hybrid retrieval without another search service |
 | Message broker | RabbitMQ | Deliver ingestion messages to workers; services own document state and retry policy |
 | Object storage | S3-compatible storage | Original uploaded PDF bytes |
-| Unit/integration tests | Vitest for TypeScript; unittest for initial Python unit tests | Test each runtime independently |
+| Unit/integration tests | Vitest for TypeScript; pytest for Python; existing unittest cases retained during adoption | Test each runtime independently |
 | Integration infrastructure | Testcontainers | Disposable PostgreSQL/pgvector instances with migrations applied from scratch |
 | End-to-end tests | Playwright | Critical browser flows once the first complete flow exists |
 | Local infrastructure | Docker Compose | Reproducible PostgreSQL, RabbitMQ, and object storage |
