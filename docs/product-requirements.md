@@ -49,7 +49,7 @@ V1 has no organizations, teams, invitations, or workspace-management interface. 
 ### Asynchronous ingestion
 
 - **FR-13:** Upload and text-submission requests do not wait for parsing, chunking, embedding, or indexing to finish.
-- **FR-14:** A user can observe the document states `uploaded`, `queued`, `processing`, `completed`, and `failed`.
+- **FR-14:** A user can observe the document states `uploading`, `uploaded`, `queued`, `processing`, `completed`, and `failed`.
 - **FR-15:** A failed document exposes a safe, useful error summary and can be retried.
 - **FR-16:** Only completed documents participate in retrieval.
 - **FR-17:** Ingestion supports bounded retries and safe duplicate job execution.
@@ -133,7 +133,7 @@ An ingestion-run entity may be added if durable attempt history is needed beyond
 
 ```text
 document:
-uploaded -> queued -> processing -> completed
+uploading -> uploaded -> queued -> processing -> completed
                             \----> failed
 ```
 
@@ -149,9 +149,12 @@ started -> retrieving -> generating -> completed
 
 ```text
 authorize user
--> validate PDF and limits
--> store original bytes in object storage
--> insert document metadata
+-> validate PDF metadata and upload limit
+-> create an uploading document with a server-generated storage key
+-> return a short-lived, single-write presigned URL
+-> browser uploads original bytes directly to object storage
+-> server verifies stored content type and byte length
+-> mark document uploaded
 -> enqueue ingestion job
 -> worker extracts text
 -> worker chunks and embeds text

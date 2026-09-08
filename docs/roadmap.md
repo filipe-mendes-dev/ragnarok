@@ -1,5 +1,7 @@
 # RAGnarok Implementation Roadmap
 
+Last updated: 2026-09-07
+
 ## Working rule
 
 Complete phases in order. A phase is complete when its observable outcome and verification gate pass. Reranking and visual polish are the first items deferred when schedule pressure appears.
@@ -23,8 +25,11 @@ Gate: a clean install can lint, type-check, test, build, and serve the health en
 Target: Days 1-2
 
 - [x] Add Docker Compose services for PostgreSQL with pgvector, Redis, and local S3-compatible storage.
-- [ ] Configure Drizzle and committed migrations.
-- [ ] Implement initial user, document, chunk, conversation, message, retrieval-run, and candidate tables only as needed.
+- [x] Configure Drizzle and committed migrations.
+- [x] Add Better Auth user, account, session, verification, and rate-limit tables.
+- [x] Add the owned document table with source-specific database constraints.
+- [ ] Add the chunk table when ingestion and embedding requirements are implemented.
+- [ ] Add conversation, message, retrieval-run, and candidate tables when the question-answering flow requires them.
 - [ ] Verify database persistence across container restarts.
 
 Gate: migrations create the schema from an empty database and the application can read/write a test record.
@@ -35,10 +40,12 @@ Failure test: stop PostgreSQL and confirm the application reports a bounded, obs
 
 Target: Day 2
 
-- [ ] Select a practical authentication library or provider.
-- [ ] Implement sign in, sign out, protected routes, and cached server-side identity lookup.
-- [ ] Add direct `userId` ownership to private resources.
-- [ ] Test cross-user document access at the repository/query boundary.
+- [x] Select Better Auth with email/password and GitHub OAuth support.
+- [x] Implement sign in, sign out, protected routes, and cached server-side identity lookup.
+- [x] Add direct `userId` ownership to document resources.
+- [x] Test cross-user document reads at the repository/query boundary.
+- [x] Test cross-user PDF upload finalization at the persistence boundary.
+- [ ] Test cross-user text editing and deletion when those workflows are implemented.
 
 Gate: two test users cannot read or mutate each other's resources, including by submitting another user's identifier manually.
 
@@ -46,11 +53,13 @@ Gate: two test users cannot read or mutate each other's resources, including by 
 
 Target: Day 3
 
-- [ ] Submit and edit plain-text documents.
-- [ ] Upload text-based PDFs with configurable size and extraction limits.
-- [ ] Store original PDF bytes in object storage and metadata in PostgreSQL.
-- [ ] List and delete owned documents.
-- [ ] Expose document state in the UI.
+- [x] Submit and list owned plain-text documents.
+- [ ] Edit submitted plain-text documents.
+- [x] Upload PDFs directly to object storage with a configurable file-size limit.
+- [ ] Enforce extracted-content limits when PDF parsing is implemented.
+- [x] Store original PDF bytes in object storage and metadata in PostgreSQL.
+- [ ] Delete owned documents.
+- [x] Expose document state in the UI.
 
 Gate: a user can create, list, edit where allowed, and delete private sources without synchronous ingestion.
 

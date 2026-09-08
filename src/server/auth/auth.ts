@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth';
 
 import { getAuthenticationEnvironment } from '@/server/auth/auth-env';
 import { database } from '@/server/db/client';
-import * as schema from '@/server/db/schema';
+import * as schema from '@/server/db/schema/index';
 
 const environment = getAuthenticationEnvironment();
 

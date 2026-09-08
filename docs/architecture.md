@@ -35,6 +35,7 @@ V1 does not introduce a separate Fastify, NestJS, or Python API because there is
 | Queue coordination | Redis | BullMQ job state and coordination, not authoritative business state |
 | Object storage | S3-compatible storage | Original uploaded PDF bytes |
 | Unit/integration tests | Vitest | Fast tests for application and retrieval behavior |
+| Integration infrastructure | Testcontainers | Disposable PostgreSQL/pgvector instances with migrations applied from scratch |
 | End-to-end tests | Playwright | Critical browser flows once the first complete flow exists |
 | Local infrastructure | Docker Compose | Reproducible PostgreSQL, Redis, and object storage |
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
@@ -63,14 +64,13 @@ ragnarok/
 │   ├── server/                    # Trusted Node.js modules
 │   │   ├── auth/
 │   │   ├── db/
-│   │   ├── documents/
-│   │   ├── ingestion/
+│   │   │   ├── client.ts
+│   │   │   └── schema/           # Drizzle tables grouped by capability
+│   │   ├── modules/               # Business capabilities
+│   │   │   ├── documents/
+│   │   │   ├── ingestion/
+│   │   │   └── rag/
 │   │   ├── queue/
-│   │   ├── rag/
-│   │   │   ├── retrieval/
-│   │   │   ├── context/
-│   │   │   ├── generation/
-│   │   │   └── citations/
 │   │   ├── storage/
 │   │   └── observability/
 │   ├── shared/                    # Environment-neutral schemas and interfaces
@@ -129,6 +129,8 @@ Owns trusted Node.js behavior:
 
 The directory name is a human convention, not a bundler rule. Next-specific modules that must never enter a Client Component graph use `import "server-only"`. Modules shared with the separately compiled worker do not use that marker unconditionally because `server-only` relies on the React server export condition supplied by the Next.js compiler. Directory import rules and dependency checks protect the complete `src/server` boundary.
 
+`src/server/modules` groups business capabilities such as documents, ingestion, and RAG. Infrastructure integrations such as the database client, queue, and object storage remain outside that directory. A module may use several infrastructure adapters, and a database table does not automatically require its own module or service.
+
 ### `src/shared`
 
 Contains code that is safe in both browser and server dependency graphs:
@@ -142,7 +144,7 @@ It does not import database clients, Node-only APIs, secrets, BullMQ, or provide
 
 ### `src/worker`
 
-Bootstraps the separately built ingestion worker. The entry point performs process setup and delegates jobs to application workflows in `src/server/ingestion`.
+Bootstraps the separately built ingestion worker. The entry point performs process setup and delegates jobs to application workflows in `src/server/modules/ingestion`.
 
 ## Client and server dependency graphs
 
@@ -192,7 +194,7 @@ interface DocumentRow {
 interface DocumentSummaryDto {
   id: string;
   title: string;
-  status: "uploaded" | "queued" | "processing" | "completed" | "failed";
+  status: "uploading" | "uploaded" | "queued" | "processing" | "completed" | "failed";
   createdAt: string;
 }
 ```
@@ -214,7 +216,7 @@ Small barrels are allowed for a component's intentional public API. Mixed barrel
 ```ts
 // Forbidden
 export { DocumentList } from "./DocumentList";
-export { deleteDocument } from "@/server/documents/delete-document";
+export { deleteDocument } from "@/server/modules/documents/delete-document";
 ```
 
 Server and client entry points remain separate. Cross-layer imports prefer explicit module paths when that makes the runtime boundary clearer.
@@ -243,6 +245,8 @@ delete a document and its stored object
 
 Services own transactions that span multiple repositories or workflow steps. Repositories do not encode user intent, and route handlers do not contain business workflows.
 
+PDF uploads use a two-phase object-storage workflow. The server authenticates the user, validates metadata, generates the object key, persists an `uploading` document, and returns a five-minute presigned PUT URL. The browser sends bytes directly to object storage. A completion action performs an ownership-filtered lookup, verifies content type and byte length through object metadata, and atomically transitions the document to `uploaded`. The signed PUT uses `If-None-Match: *` so the same authorization cannot overwrite a verified object.
+
 ## Runtime topology
 
 ### Local development
@@ -250,6 +254,7 @@ Services own transactions that span multiple repositories or workflow steps. Rep
 ```text
 Host: Next.js dev server + worker watch process
 Docker: PostgreSQL/pgvector + Redis + S3-compatible local storage
+Integration tests: disposable PostgreSQL/pgvector container managed by Testcontainers
 ```
 
 This preserves fast refresh and debugger access while making stateful infrastructure reproducible.
