@@ -58,11 +58,15 @@
 - Organize service integration tests by service method and name tests after business invariants.
 - Use nested `describe` blocks only when they group multiple tests or clarify a meaningful scenario.
 - Arrange existing state through pure fixtures and focused seed helpers that write directly through Drizzle, bypassing application repositories and services.
+- Before adding a test helper, search existing fixtures, seeders, and support utilities; reuse or extend a helper when it represents the same test mechanic.
+- Centralize mechanical setup repeated across test files, but keep business-specific scenario composition visible in each test.
 - Use only the service method under test as the action, then verify service-visible results and relevant persisted side effects independently.
+- Cover meaningful successful and rejected service outcomes, especially authorization and state-transition boundaries.
 - Build expected values from fixtures, explicit inputs, and controlled timestamps; do not copy the service result into the expected database value.
 - Keep repository tests narrow and cover their persistence contract, ownership filtering, ordering, and non-trivial query behavior.
 - Assert exact affected rows or constraint identifiers when identity and relational behavior matter.
 - Deduplicate test mechanics, not business meaning; helpers must not hide the scenario being protected.
+- Prefer isolated per-test database state. Use `beforeAll` only for immutable, expensive shared reference data, and never share mutable scenario rows merely to reduce insert counts without a measured performance problem.
 
 ## Communication
 
