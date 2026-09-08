@@ -1,26 +1,48 @@
 import type { Database } from "@/server/db/client";
-import { document } from "@/server/db/schema/documents";
+import {
+    document,
+    type NewDocumentRow,
+} from "@/server/db/schema/documents";
+import { PDF_MIME_TYPE } from "@/shared/documents";
 
-import type { TextDocumentFixture } from "../../fixtures/documents";
+import type {
+    PdfDocumentFixture,
+    TextDocumentFixture,
+} from "../../fixtures/documents";
 
-export async function seedTextDocument(
+export async function seedDocument(
     database: Database,
-    fixture: TextDocumentFixture,
+    fixture: PdfDocumentFixture | TextDocumentFixture,
 ): Promise<void> {
-    await database.insert(document).values({
+    const commonFields = {
         createdAt: fixture.createdAt,
         id: fixture.id,
-        mimeType: fixture.mimeType,
-        originalFilename: fixture.originalFilename,
-        processingError: fixture.processingError,
-        revision: fixture.revision,
-        sizeBytes: fixture.sizeBytes,
-        sourceText: fixture.sourceText,
-        sourceType: fixture.sourceType,
         status: fixture.status,
-        storageKey: fixture.storageKey,
         title: fixture.title,
-        updatedAt: fixture.updatedAt,
         userId: fixture.userId,
-    });
+    };
+
+    const row = (
+        fixture.sourceType === "text"
+            ? {
+                  ...commonFields,
+                  mimeType: "text/plain",
+                  originalFilename: null,
+                  sizeBytes: Buffer.byteLength(fixture.sourceText, "utf8"),
+                  sourceText: fixture.sourceText,
+                  sourceType: fixture.sourceType,
+                  storageKey: null,
+              }
+            : {
+                  ...commonFields,
+                  mimeType: PDF_MIME_TYPE,
+                  originalFilename: fixture.originalFilename,
+                  sizeBytes: fixture.sizeBytes,
+                  sourceText: null,
+                  sourceType: fixture.sourceType,
+                  storageKey: fixture.storageKey,
+              }
+    ) satisfies NewDocumentRow;
+
+    await database.insert(document).values(row);
 }
