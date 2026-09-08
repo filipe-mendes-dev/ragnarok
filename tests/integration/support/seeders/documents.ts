@@ -8,7 +8,7 @@ import { PDF_MIME_TYPE } from "@/shared/documents";
 import type {
     PdfDocumentFixture,
     TextDocumentFixture,
-} from "../../fixtures/documents";
+} from "../../../fixtures/documents";
 
 export async function seedDocument(
     database: Database,
