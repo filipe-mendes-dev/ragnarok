@@ -10,7 +10,7 @@ import type {
     CreatePdfUploadUrlInput,
     DocumentObjectStorage,
     StoredObjectMetadata,
-} from "@/server/modules/documents/document-object-storage";
+} from "@/server/modules/documents/document-object-storage-contract";
 
 function isMissingObject(error: unknown): boolean {
     return (
