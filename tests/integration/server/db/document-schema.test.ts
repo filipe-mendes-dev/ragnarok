@@ -2,18 +2,16 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 import { document } from "@/server/db/schema/documents";
 
-import { createUserFixture } from "../../../fixtures/users";
-import { deleteTestUsers } from "../../support/cleanup";
 import { createIntegrationDatabase } from "../../support/database";
-import { seedUser } from "../../support/seed-users";
+import { createUserSeeder } from "../../support/seeders/users";
 
 interface PostgreSqlConstraintError {
     code: string;
     constraint: string;
 }
 
-const testUserIds: string[] = [];
 const { database, databasePool } = createIntegrationDatabase();
+const userSeeder = createUserSeeder(database);
 
 function getPostgreSqlConstraintError(
     error: unknown,
@@ -61,8 +59,7 @@ async function expectSourceConstraintViolation(
 
 describe("document source constraints", () => {
     afterEach(async () => {
-        await deleteTestUsers(database, testUserIds);
-        testUserIds.length = 0;
+        await userSeeder.cleanup();
     });
 
     afterAll(async () => {
@@ -70,9 +67,7 @@ describe("document source constraints", () => {
     });
 
     it("rejects a text document that also references object storage", async () => {
-        const owner = createUserFixture({ name: "Document owner" });
-        await seedUser(database, owner);
-        testUserIds.push(owner.id);
+        const owner = await userSeeder.seed({ name: "Document owner" });
 
         await expectSourceConstraintViolation(
             database.insert(document).values({
@@ -89,9 +84,7 @@ describe("document source constraints", () => {
     });
 
     it("rejects a PDF document without an object-storage key", async () => {
-        const owner = createUserFixture({ name: "Document owner" });
-        await seedUser(database, owner);
-        testUserIds.push(owner.id);
+        const owner = await userSeeder.seed({ name: "Document owner" });
 
         await expectSourceConstraintViolation(
             database.insert(document).values({
