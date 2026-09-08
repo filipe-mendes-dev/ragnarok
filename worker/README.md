@@ -11,12 +11,18 @@ Use uv to manage the Python project. On macOS with Homebrew, install uv once:
 brew install uv
 ```
 
-Then run from the repository root:
+The initial uv environment and lockfile have been generated. The pytest runner is
+the next development dependency. From `worker/`, run `uv add --dev pytest` once
+and review the resulting `pyproject.toml` and `uv.lock` changes. Until then, the
+existing tests still run with `uv run python -m unittest discover -s
+tests/unit/ragnarok_ingestion -v` on one line.
+
+For normal use, run from the repository root:
 
 ```bash
 cd worker
 uv sync
-uv run python -m unittest discover -s tests/unit/ragnarok_ingestion -v
+uv run python -m pytest -v
 uv run python examples/chunk_text.py
 ```
 
@@ -26,21 +32,23 @@ take effect without reinstalling. `.python-version` selects Python 3.14. uv can
 download an appropriate Python interpreter if it cannot find one locally.
 
 `uv run` executes a command in that environment. There is no activation step and
-no need to use `.venv/bin/python` directly. `python -m unittest` runs Python's
-built-in test module. `discover` finds test files under the directory selected by
-`-s`; `-v` prints individual test names.
+no need to use `.venv/bin/python` directly. `python -m pytest` runs the test runner.
+`testpaths` in `pyproject.toml` tells it to search `tests/`; `-v` prints individual
+test names. The existing unittest classes are compatible with pytest. New tests
+can use plain functions, assertions, and parametrization rather than requiring classes.
 
 This project already has `pyproject.toml`, so do not run `uv init` again. uv supports
 the existing setuptools build backend; adopting uv does not require replacing it.
 Setuptools tells the installer how to find and install our package under `src`.
 
 Commit the generated `uv.lock` after reviewing it, alongside `pyproject.toml` and
-`.python-version`. Keep `.venv` untracked. Initial lock generation and dependency
-installation remain pending until the user runs the setup commands. Once the lock
-exists, use `uv sync --locked` in CI to reject an outdated lockfile.
+`.python-version`. Keep `.venv` untracked. Use `uv sync --locked` in CI to reject
+an outdated lockfile. The current LangChain environment and lock have been inspected;
+pytest installation remains pending.
 
 To add a dependency later, use `uv add <package>` from `worker/`. That updates the
-declaration, lockfile, and environment together. `unittest` needs no installation.
+declaration, lockfile, and environment together. Use `--dev` for tools such as pytest
+that the production worker does not need.
 
 ## Files and Python concepts
 
@@ -97,7 +105,10 @@ The splitter tries paragraph breaks, line breaks, spaces, then individual charac
 It may split a sentence. Overlap is a target and can be smaller at paragraph boundaries.
 Line endings are normalized to LF and surrounding whitespace is stripped. Blank
 sources raise `ValueError`; an ingestion service will later map that to a safe failure.
-Meaningful repeated passages are preserved.
+Meaningful repeated passages are preserved. Retained separators count toward the
+size during splitting, even when they are later stripped. At very small limits,
+a word that appears to fit can therefore split further. Preservation tests must
+not assume all repeated words produce identical chunk boundaries.
 
 This module expects bounded source text from the future loader. Download, page,
 extraction, and execution limits belong to the later ingestion step. It carries no
@@ -109,3 +120,11 @@ splitting behavior changes.
 
 Tests use the real LangChain splitter. The example prints the same sample with two
 size settings so we can review boundaries before building persistence.
+
+## Why keep the example
+
+The example is a manual inspection tool, not a test fixture or production entry
+point. Tests do not import it. Keep it while evaluating chunk settings: it shows
+that a small limit can produce a heading-only chunk such as `Processing`. Passing
+unit tests proves the tested splitting rules, not retrieval quality. Later we can
+replace this demo with representative evaluation documents.
