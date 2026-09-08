@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { DEFAULT_PDF_MAX_SIZE_BYTES } from "@/shared/documents";
+
 export interface ServerEnvironment {
     DATABASE_URL: string;
     REDIS_URL: string;
@@ -9,6 +11,7 @@ export interface ServerEnvironment {
     S3_ACCESS_KEY_ID: string;
     S3_SECRET_ACCESS_KEY: string;
     S3_FORCE_PATH_STYLE: boolean;
+    PDF_MAX_UPLOAD_SIZE_BYTES: number;
 }
 
 const serverEnvironmentSchema = z.object({
@@ -20,6 +23,11 @@ const serverEnvironmentSchema = z.object({
     S3_ACCESS_KEY_ID: z.string().min(1),
     S3_SECRET_ACCESS_KEY: z.string().min(1),
     S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).transform((value) => value === "true"),
+    PDF_MAX_UPLOAD_SIZE_BYTES: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(DEFAULT_PDF_MAX_SIZE_BYTES),
 });
 
 let cachedServerEnvironment: ServerEnvironment | undefined;
