@@ -25,7 +25,7 @@ V1 does not introduce a separate Fastify, NestJS, or Python API because there is
 | UI | React | Interactive application interface |
 | Languages | Strict TypeScript for web; typed Python 3.14 for ingestion | Web development plus Python document-processing experience |
 | Runtimes | Node.js 24 LTS and Python 3.14 | Separate web and ingestion processes |
-| Package management | npm for web; pip and venv for worker | Isolated runtime dependencies; Python lock generation remains pending |
+| Package management | npm for web; uv for worker | uv manages Python, the worker environment, and uv.lock; initial lock generation remains pending |
 | Text splitting | langchain-text-splitters | Local recursive character splitting; no model API required |
 | Styling | Tailwind CSS with semantic CSS variables | Fast dashboard implementation with a controlled token boundary |
 | Database | PostgreSQL | Durable application, document, conversation, and trace state |
@@ -269,6 +269,20 @@ Implement in small steps:
 Start with paragraph-aware splitting and a maximum size. Chunks can have different sizes. The initial Python chunker uses 1,000 Unicode code points and a target overlap of 150, both adjustable. These are trial values pending sample review and later retrieval evaluation. Its initial output contains ordinal and text; document revision, page locations, and persistence metadata follow in later steps. Store one active chunk set per document, including source revision, order, text, source location where available, and enough method/version/settings metadata to identify how it was produced. Later customization can change settings or replace the method; simultaneous chunk sets are deferred.
 
 The Python chunker uses the pinned `langchain-text-splitters` package and its `RecursiveCharacterTextSplitter`. This local operation needs no provider credentials. Ordinary functions remain suitable for this fixed ingestion workflow. LangGraph and agents are outside V1. After ordinary RAG works, a separate learning exercise can introduce tool calling, then conditional workflows and persisted execution. Python is an explicit learning choice for this milestone. It adds dependency management, message-contract validation in both languages, and separate persistence code. It does not add a Python HTTP API. See `worker/README.md` for setup and current limitations.
+
+## Python worker integration plan
+
+The initial Python package contains chunking only. The following describes the planned integration, not implemented broker or database code.
+
+Next.js authenticates the user and saves the source through its existing TypeScript services and Drizzle repositories. It publishes a versioned JSON message through RabbitMQ. A separately running Python consumer validates that message and delegates to the Python ingestion service. The service queries PostgreSQL with owner, document, and revision filters before accessing the source, then calls extraction and chunking. The web application continues to read status from PostgreSQL through Drizzle; no callback to Next.js is required for completion.
+
+Use Pydantic for the incoming Python message when that boundary is implemented, with strict validation and forbidden extra fields. It plays the same validation role as Zod. Preserve the existing JSON field names across languages and test the same valid and invalid messages in both runtimes. Internal chunk values remain dataclasses. Pydantic is not a persistence layer or an authorization mechanism.
+
+The recommended initial database client is Psycopg 3 with parameterized SQL in focused Python repositories. No Python database dependency has been added yet. Psycopg handles PostgreSQL connections and queries; an ORM is not required for the small ingestion query set. Drizzle continues to define and generate the shared schema and migrations. Python tests apply those same migrations to disposable PostgreSQL infrastructure; the worker does not create tables or introduce Alembic migrations.
+
+Python services own transaction boundaries and pass a connection to repositories. Claiming work uses a short transaction. Extraction and chunking happen outside it. Final persistence rechecks the current revision and claim, replaces chunks, and marks completion in one transaction. A consumer acknowledges the message after the outcome is committed. Retrying computation is acceptable; duplicate or stale persisted chunks are not.
+
+Using Python means SQL queries do not inherit Drizzle's compile-time schema checks. Typed row mapping, shared contract fixtures, and database integration tests must catch drift. Implement Python ingestion operations only; do not copy the web application's upload and listing services.
 
 ## Input validation naming
 
