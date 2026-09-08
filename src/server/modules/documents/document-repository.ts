@@ -42,10 +42,30 @@ export function createDocumentRepository(databaseClient: Database) {
         return record;
     }
 
+    async function markUploadedForUser(
+        userId: string,
+        documentId: string,
+    ): Promise<DocumentRow | null> {
+        const [record] = await databaseClient
+            .update(document)
+            .set({ status: "uploaded" })
+            .where(
+                and(
+                    eq(document.id, documentId),
+                    eq(document.userId, userId),
+                    eq(document.status, "uploading"),
+                ),
+            )
+            .returning();
+
+        return record ?? null;
+    }
+
     return {
         findByIdForUser,
         listForUser,
         insert,
+        markUploadedForUser,
     };
 }
 
