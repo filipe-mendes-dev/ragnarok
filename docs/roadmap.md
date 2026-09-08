@@ -1,6 +1,6 @@
 # RAGnarok Implementation Roadmap
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Working rule
 
@@ -44,7 +44,8 @@ Target: Day 2
 - [x] Implement sign in, sign out, protected routes, and cached server-side identity lookup.
 - [x] Add direct `userId` ownership to document resources.
 - [x] Test cross-user document reads at the repository/query boundary.
-- [ ] Test cross-user document mutations when mutation workflows are implemented.
+- [x] Test cross-user PDF upload finalization at the persistence boundary.
+- [ ] Test cross-user text editing and deletion when those workflows are implemented.
 
 Gate: two test users cannot read or mutate each other's resources, including by submitting another user's identifier manually.
 
@@ -54,10 +55,11 @@ Target: Day 3
 
 - [x] Submit and list owned plain-text documents.
 - [ ] Edit submitted plain-text documents.
-- [ ] Upload text-based PDFs with configurable size and extraction limits.
-- [ ] Store original PDF bytes in object storage and metadata in PostgreSQL.
+- [x] Upload PDFs directly to object storage with a configurable file-size limit.
+- [ ] Enforce extracted-content limits when PDF parsing is implemented.
+- [x] Store original PDF bytes in object storage and metadata in PostgreSQL.
 - [ ] Delete owned documents.
-- [ ] Expose document state in the UI.
+- [x] Expose document state in the UI.
 
 Gate: a user can create, list, edit where allowed, and delete private sources without synchronous ingestion.
 

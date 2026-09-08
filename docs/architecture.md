@@ -245,6 +245,8 @@ delete a document and its stored object
 
 Services own transactions that span multiple repositories or workflow steps. Repositories do not encode user intent, and route handlers do not contain business workflows.
 
+PDF uploads use a two-phase object-storage workflow. The server authenticates the user, validates metadata, generates the object key, persists an `uploading` document, and returns a five-minute presigned PUT URL. The browser sends bytes directly to object storage. A completion action performs an ownership-filtered lookup, verifies content type and byte length through object metadata, and atomically transitions the document to `uploaded`. The signed PUT uses `If-None-Match: *` so the same authorization cannot overwrite a verified object.
+
 ## Runtime topology
 
 ### Local development

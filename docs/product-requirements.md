@@ -149,9 +149,12 @@ started -> retrieving -> generating -> completed
 
 ```text
 authorize user
--> validate PDF and limits
--> store original bytes in object storage
--> insert document metadata
+-> validate PDF metadata and upload limit
+-> create an uploading document with a server-generated storage key
+-> return a short-lived, single-write presigned URL
+-> browser uploads original bytes directly to object storage
+-> server verifies stored content type and byte length
+-> mark document uploaded
 -> enqueue ingestion job
 -> worker extracts text
 -> worker chunks and embeds text
