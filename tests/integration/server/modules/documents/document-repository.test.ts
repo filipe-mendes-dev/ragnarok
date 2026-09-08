@@ -1,34 +1,24 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 
+import type { NewDocumentRow } from "@/server/db/schema/documents";
 import { createDocumentRepository } from "@/server/modules/documents/document-repository";
 
-import { createTextDocumentFixture } from "../../../../fixtures/documents";
-import { createUserFixture } from "../../../../fixtures/users";
-import { deleteTestUsers } from "../../../support/cleanup";
+import {
+    createPdfDocumentFixture,
+    createTextDocumentFixture,
+} from "../../../../fixtures/documents";
 import { createIntegrationDatabase } from "../../../support/database";
 import { readPersistedDocument } from "../../../support/read-documents";
-import { seedTextDocument } from "../../../support/seed-documents";
-import { seedUser } from "../../../support/seed-users";
+import { seedDocument } from "../../../support/seeders/documents";
+import { createUserSeeder } from "../../../support/seeders/users";
 
-const testUserIds: string[] = [];
 const { database, databasePool } = createIntegrationDatabase();
 const documentRepository = createDocumentRepository(database);
-
-async function arrangeUser(
-    name: string,
-): Promise<ReturnType<typeof createUserFixture>> {
-    const fixture = createUserFixture({ name });
-
-    await seedUser(database, fixture);
-    testUserIds.push(fixture.id);
-
-    return fixture;
-}
+const userSeeder = createUserSeeder(database);
 
 describe("documentRepository", () => {
     afterEach(async () => {
-        await deleteTestUsers(database, testUserIds);
-        testUserIds.length = 0;
+        await userSeeder.cleanup();
     });
 
     afterAll(async () => {
@@ -37,10 +27,10 @@ describe("documentRepository", () => {
 
     describe("findByIdForUser", () => {
         it("requires both the document ID and owning user ID", async () => {
-            const owner = await arrangeUser("Document owner");
-            const otherUser = await arrangeUser("Other user");
+            const owner = await userSeeder.seed({ name: "Document owner" });
+            const otherUser = await userSeeder.seed({ name: "Other user" });
             const fixture = createTextDocumentFixture({ userId: owner.id });
-            await seedTextDocument(database, fixture);
+            await seedDocument(database, fixture);
 
             const ownerResult = await documentRepository.findByIdForUser(
                 owner.id,
@@ -57,28 +47,54 @@ describe("documentRepository", () => {
     });
 
     describe("listForUser", () => {
-        it("excludes documents belonging to other users", async () => {
-            const owner = await arrangeUser("Document owner");
-            const otherUser = await arrangeUser("Other user");
-            const ownedDocument = createTextDocumentFixture({ userId: owner.id });
+        it("returns only the user's documents newest first", async () => {
+            const owner = await userSeeder.seed({ name: "Document owner" });
+            const otherUser = await userSeeder.seed({ name: "Other user" });
+            const olderDocument = createTextDocumentFixture({
+                createdAt: new Date("2026-09-06T10:00:00.000Z"),
+                title: "Older",
+                userId: owner.id,
+            });
+            const newerDocument = createTextDocumentFixture({
+                createdAt: new Date("2026-09-06T11:00:00.000Z"),
+                title: "Newer",
+                userId: owner.id,
+            });
             const otherDocument = createTextDocumentFixture({
                 userId: otherUser.id,
             });
-            await seedTextDocument(database, ownedDocument);
-            await seedTextDocument(database, otherDocument);
+            await seedDocument(database, olderDocument);
+            await seedDocument(database, newerDocument);
+            await seedDocument(database, otherDocument);
 
             const result = await documentRepository.listForUser(owner.id);
 
-            expect(result.map((row) => row.id)).toEqual([ownedDocument.id]);
+            expect(result.map((row) => row.id)).toEqual([
+                newerDocument.id,
+                olderDocument.id,
+            ]);
         });
     });
 
     describe("insert", () => {
         it("persists the supplied document fields", async () => {
-            const owner = await arrangeUser("Document owner");
+            const owner = await userSeeder.seed({ name: "Document owner" });
             const fixture = createTextDocumentFixture({ userId: owner.id });
+            const input = {
+                createdAt: fixture.createdAt,
+                id: fixture.id,
+                mimeType: "text/plain",
+                originalFilename: null,
+                sizeBytes: Buffer.byteLength(fixture.sourceText, "utf8"),
+                sourceText: fixture.sourceText,
+                sourceType: fixture.sourceType,
+                status: fixture.status,
+                storageKey: null,
+                title: fixture.title,
+                userId: fixture.userId,
+            } satisfies NewDocumentRow;
 
-            const result = await documentRepository.insert(fixture);
+            const result = await documentRepository.insert(input);
             const persistedDocument = await readPersistedDocument(
                 database,
                 result.id,
@@ -92,6 +108,28 @@ describe("documentRepository", () => {
                 sourceType: fixture.sourceType,
                 status: fixture.status,
             });
+        });
+    });
+
+    describe("markUploadedForUser", () => {
+        it("transitions only an uploading PDF owned by the supplied user", async () => {
+            const owner = await userSeeder.seed({ name: "Document owner" });
+            const otherUser = await userSeeder.seed({ name: "Other user" });
+            const fixture = createPdfDocumentFixture({ userId: owner.id });
+            await seedDocument(database, fixture);
+
+            const unauthorizedResult =
+                await documentRepository.markUploadedForUser(
+                    otherUser.id,
+                    fixture.id,
+                );
+            const authorizedResult = await documentRepository.markUploadedForUser(
+                owner.id,
+                fixture.id,
+            );
+
+            expect(unauthorizedResult).toBeNull();
+            expect(authorizedResult?.status).toBe("uploaded");
         });
     });
 });
