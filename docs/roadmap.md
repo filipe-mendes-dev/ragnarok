@@ -75,8 +75,9 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
 - [x] Generate and inspect `worker/uv.lock` with uv; confirm the installed LangChain splitter version.
 - [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
-- [ ] Install pytest with `uv add --dev pytest` and verify the same suite under the configured runner.
-- [ ] Add the chunk schema and generated migration; verify constraints against a fresh Testcontainers database.
+- [x] Install pytest and verify the existing suite under the configured runner.
+- [x] Add the chunk/configuration schema and generated migration; verify constraints against a fresh Testcontainers database.
+- [ ] Install Psycopg and Python Testcontainers; verify the prepared read-only source/configuration repositories.
 - [ ] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
 - [ ] Add RabbitMQ configuration, a TypeScript publisher client, and a Python consumer client.

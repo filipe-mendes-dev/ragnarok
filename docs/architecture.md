@@ -273,7 +273,7 @@ The Python chunker uses the pinned `langchain-text-splitters` package and its `R
 ## Chunk persistence
 
 The Phase 4 schema definitions are `src/server/db/schema/document-chunks.ts` and `src/server/db/schema/chunk-configs.ts`.
-Migration generation and database verification are pending.
+Migration `0004_high_sentry.sql` was generated and verified against fresh Testcontainers PostgreSQL; all 18 schema tests pass.
 
 Each `document_chunk` row stores:
 
@@ -294,13 +294,13 @@ No embeddings, lexical-search fields, or source offsets are added in this step. 
 
 ## Python worker integration plan
 
-The initial Python package contains chunking only. The following describes the planned integration, not implemented broker or database code.
+The Python package contains chunking and read-only source/configuration repositories. Their new Psycopg/Testcontainers dependencies and Python database tests await installation and execution. The following describes the planned integration, not implemented broker or database code.
 
 Next.js authenticates the user and saves the source through its existing TypeScript services and Drizzle repositories. It publishes a versioned JSON message through RabbitMQ. A separately running Python consumer validates that message and delegates to the Python ingestion service. The service queries PostgreSQL with owner, document, and revision filters before accessing the source, then calls extraction and chunking. The web application continues to read status from PostgreSQL through Drizzle; no callback to Next.js is required for completion.
 
 Use Pydantic for the incoming Python message when that boundary is implemented, with strict validation and forbidden extra fields. It plays the same validation role as Zod. Preserve the existing JSON field names across languages and test the same valid and invalid messages in both runtimes. Internal chunk values remain dataclasses. Pydantic is not a persistence layer or an authorization mechanism.
 
-The recommended initial database client is Psycopg 3 with parameterized SQL in focused Python repositories. No Python database dependency has been added yet. Psycopg handles PostgreSQL connections and queries; an ORM is not required for the small ingestion query set. Drizzle continues to define and generate the shared schema and migrations. Python tests apply those same migrations to disposable PostgreSQL infrastructure; the worker does not create tables or introduce Alembic migrations.
+The recommended initial database client is Psycopg 3 with parameterized SQL in focused Python repositories. Read-only Psycopg repositories are prepared; dependency installation and Python database verification are pending. Psycopg handles PostgreSQL connections and queries; an ORM is not required for the small ingestion query set. Drizzle continues to define and generate the shared schema and migrations. Python tests apply those same migrations to disposable PostgreSQL infrastructure; the worker does not create tables or introduce Alembic migrations.
 
 Python services own transaction boundaries and pass a connection to repositories. Claiming work uses a short transaction. Extraction and chunking happen outside it. Final persistence rechecks the current revision and claim, replaces chunks, and marks completion in one transaction. A consumer acknowledges the message after the outcome is committed. Retrying computation is acceptable; duplicate or stale persisted chunks are not.
 

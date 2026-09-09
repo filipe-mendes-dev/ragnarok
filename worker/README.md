@@ -1,7 +1,8 @@
 # Python ingestion
 
-This first step splits already-extracted text with LangChain. It does not consume
-RabbitMQ messages, read PDFs, persist chunks, or generate embeddings yet.
+The worker package splits extracted text with LangChain and now includes read-only
+PostgreSQL repositories for text sources and chunk configurations. It does not
+consume RabbitMQ messages, read PDFs, persist chunks, or generate embeddings yet.
 
 ## Setup
 
@@ -128,3 +129,59 @@ point. Tests do not import it. Keep it while evaluating chunk settings: it shows
 that a small limit can produce a heading-only chunk such as `Processing`. Passing
 unit tests proves the tested splitting rules, not retrieval quality. Later we can
 replace this demo with representative evaluation documents.
+
+## PostgreSQL reads
+
+From `worker/`, install the new dependencies as part of the learning flow:
+
+```bash
+uv add "psycopg[binary]"
+uv add --dev "testcontainers[postgres]"
+uv run python -m pytest tests/unit -v
+uv run python -m pytest tests/integration -v
+```
+
+Psycopg is the database driver. The binary extra supplies the compiled driver
+without requiring local PostgreSQL build tools. Testcontainers starts disposable
+PostgreSQL for tests. Docker must be running, and the repository's npm dependencies
+must be installed. Until these Python dependencies are installed, run only `tests/unit`.
+
+New files:
+
+- `database.py` opens a connection with connection, statement, and lock timeouts.
+- `document_repository.py` reads text by document ID, owner ID, and revision in the same query. PDFs and unmatched rows return `None`.
+- `chunk_config_repository.py` reads a configuration by ID. It does not create or update settings.
+- `tests/integration/conftest.py` provides a disposable database and per-test rollback.
+- `tests/integration/ragnarok_ingestion/` checks reads, ownership, stale revisions, missing records, and PDF exclusion.
+
+A connection is a session with PostgreSQL. A cursor executes a query and reads its
+results. The `with` statement closes the cursor when execution leaves its block,
+including after an exception. The caller owns the connection and must close it.
+
+SQL `%s` placeholders receive a separate tuple of values. They are not Python
+string interpolation. In `(config_id,)`, the trailing comma creates a one-element
+tuple. This keeps user input out of the SQL syntax. Psycopg adapts `UUID` values to
+PostgreSQL UUIDs automatically.
+
+`class_row(TextDocumentSource)` uses result column names to construct the dataclass.
+It is a row mapper, not Pydantic validation. The query and database constraints
+supply the expected shape; integration tests catch schema mismatches. `fetchone()`
+returns a matching object or `None`. The repositories do not claim work or decide
+whether a status is eligible for ingestion.
+
+`autocommit=True` means these reads do not leave an implicit transaction open.
+Future service writes will use explicit `connection.transaction()` blocks to
+commit chunk replacement and completion together. Extraction must happen outside
+that transaction.
+
+A pytest fixture supplies setup to tests that name it as an argument. `yield`
+hands the resource to the test, then runs the remaining cleanup afterward.
+The session fixture shares only expensive container setup. Each test gets a
+separate connection and a transaction that always rolls back its seed rows.
+This rollback fixture is intended for these read-only repository tests; future
+service commit tests need independent connections and explicit cleanup.
+
+The container fixture runs the existing `npm run db:migrate` command from the
+repository root. It overrides `DATABASE_URL` with the disposable container URL
+before running the command. It never loads a development URL for test queries,
+reimplements migration ordering, or creates a Python migration history.
