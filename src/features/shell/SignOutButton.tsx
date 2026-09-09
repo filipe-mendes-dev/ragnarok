@@ -23,7 +23,7 @@ export function SignOutButton() {
 
     return (
         <button
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex min-h-11 items-center rounded-control px-2 text-sm font-medium text-muted-foreground transition-colors enabled:hover:bg-surface-muted enabled:hover:text-foreground sm:px-3 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isPending}
             onClick={handleSignOut}
             type="button"

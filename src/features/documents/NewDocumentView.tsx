@@ -30,10 +30,10 @@ export function NewDocumentView({
     startPdfUploadAction,
 }: NewDocumentViewProps) {
     return (
-        <main className="px-5 py-12 sm:px-8 sm:py-16">
+        <main className="px-5 py-10 sm:px-8 sm:py-14">
             <section className="mx-auto max-w-3xl">
                 <Link
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex min-h-11 items-center rounded-control text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
                     href="/documents"
                 >
                     ← Back to documents
