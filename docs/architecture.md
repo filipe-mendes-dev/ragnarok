@@ -270,6 +270,28 @@ Start with paragraph-aware splitting and a maximum size. Chunks can have differe
 
 The Python chunker uses the pinned `langchain-text-splitters` package and its `RecursiveCharacterTextSplitter`. This local operation needs no provider credentials. Ordinary functions remain suitable for this fixed ingestion workflow. LangGraph and agents are outside V1. After ordinary RAG works, a separate learning exercise can introduce tool calling, then conditional workflows and persisted execution. Python is an explicit learning choice for this milestone. It adds dependency management, message-contract validation in both languages, and separate persistence code. It does not add a Python HTTP API. See `worker/README.md` for setup and current limitations.
 
+## Chunk persistence
+
+The Phase 4 schema definitions are `src/server/db/schema/document-chunks.ts` and `src/server/db/schema/chunk-configs.ts`.
+Migration generation and database verification are pending.
+
+Each `document_chunk` row stores:
+
+- `id`: UUID for referring to the passage later.
+- `document_id`: parent document, with cascade deletion. Ownership is checked by joining the document and filtering its `user_id`; it is not duplicated on chunks.
+- `revision`: the source revision that produced the chunk. It deliberately does not reference the document's mutable current revision, so old chunks survive edits until replacement commits.
+- `ordinal`: zero-based position across the document, not restarted on each PDF page.
+- `text`: nonblank chunk content.
+- `page_number`: nullable for submitted text; a positive one-based PDF page when available. Initial PDF extraction will split each page separately so a chunk belongs to one page. This simplifies citations but can split context across page boundaries.
+- `chunk_config_id`: required reference to the configuration that produced this chunk.
+- `created_at`: insertion timestamp.
+
+The unique index on `(document_id, revision, ordinal)` prevents duplicate positions and supports document/revision lookups. Settings live in `chunk_config`, with a UUID, `chunking_method`, `chunk_size`, `chunk_overlap`, and creation timestamp. A unique index on method, size, and overlap allows reuse across documents. Sizes use Unicode code points, not model tokens. Referenced configurations cannot be deleted. Configurations must be treated as immutable by application services: new settings or method versions get a different row. The schema does not prevent direct SQL updates to a configuration.
+
+The ingestion service must check text length against the selected configuration and use one configuration within a replacement set, check the current revision, and replace chunks plus completion status atomically. A PostgreSQL CHECK cannot read the referenced configuration, so text length is no longer checked against size on the chunk row. Constraints alone do not enforce those workflow rules. The schema allows multiple revisions to coexist; the replacement workflow determines which set remains active.
+
+No embeddings, lexical-search fields, or source offsets are added in this step. Drizzle owns the migration; Python will insert into the resulting PostgreSQL table through Psycopg after the migration is verified.
+
 ## Python worker integration plan
 
 The initial Python package contains chunking only. The following describes the planned integration, not implemented broker or database code.
