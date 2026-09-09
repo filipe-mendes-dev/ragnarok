@@ -7,6 +7,8 @@
   --app-color-text-muted: #666661;
   --app-color-border: #deded8;
   --app-color-accent: #335cff;
+  --app-color-accent-hover: #2448db;
+  --app-color-accent-active: #203cba;
   --app-color-accent-contrast: #ffffff;
   --app-color-danger: #b42318;
   --app-font-family-sans: ui-sans-serif, system-ui, -apple-system,
@@ -27,6 +29,8 @@
     --app-color-text-muted: #98a2b3;
     --app-color-border: #2a313c;
     --app-color-accent: #7895ff;
+    --app-color-accent-hover: #91a8ff;
+    --app-color-accent-active: #a8baff;
     --app-color-accent-contrast: #080b10;
     --app-color-danger: #ff8a80;
   }
@@ -40,6 +44,8 @@
   --color-muted-foreground: var(--app-color-text-muted);
   --color-border: var(--app-color-border);
   --color-accent: var(--app-color-accent);
+  --color-accent-hover: var(--app-color-accent-hover);
+  --color-accent-active: var(--app-color-accent-active);
   --color-accent-foreground: var(--app-color-accent-contrast);
   --color-danger: var(--app-color-danger);
   --font-sans: var(--app-font-family-sans);

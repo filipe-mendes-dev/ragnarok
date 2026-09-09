@@ -103,12 +103,12 @@ export function CreatePdfDocumentForm({
 
     return (
         <form aria-busy={isPending} className="space-y-5" onSubmit={handleSubmit}>
-            <div className="space-y-1.5">
+            <div className="grid gap-1.5">
                 <label className="text-sm font-medium" htmlFor="pdf-title">
                     Title
                 </label>
                 <input
-                    className="h-11 w-full rounded-control border border-border bg-surface px-3 text-sm outline-none transition-shadow focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-11 w-full rounded-control border border-border bg-surface px-3 text-base sm:text-sm placeholder:text-muted-foreground transition-colors enabled:hover:border-muted-foreground focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={isPending}
                     id="pdf-title"
                     maxLength={DOCUMENT_TITLE_MAX_LENGTH}
@@ -119,13 +119,13 @@ export function CreatePdfDocumentForm({
                 />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="grid gap-1.5">
                 <label className="text-sm font-medium" htmlFor="pdf-file">
                     PDF file
                 </label>
                 <input
                     accept={PDF_MIME_TYPE}
-                    className="block w-full rounded-control border border-border bg-surface px-3 py-2.5 text-sm file:mr-4 file:rounded-control file:border-0 file:bg-surface-muted file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                    className="block min-w-0 w-full rounded-control border border-border bg-surface px-3 py-2.5 text-sm file:mr-4 file:rounded-control file:border-0 file:bg-surface-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground file:cursor-pointer enabled:hover:file:bg-border disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={isPending}
                     id="pdf-file"
                     name="file"
@@ -148,7 +148,7 @@ export function CreatePdfDocumentForm({
             </div>
 
             <button
-                className="inline-flex h-11 items-center justify-center rounded-control bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-control bg-accent py-2.5 px-5 text-sm font-semibold text-accent-foreground transition-colors duration-150 enabled:hover:bg-accent-hover enabled:active:bg-accent-active motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isPending}
                 type="submit"
             >

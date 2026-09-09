@@ -18,7 +18,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <body className="flex min-h-svh flex-col">
         <SiteHeader user={user} />
-        <div className="flex-1">{children}</div>
+        <div className="min-w-0 flex-1">{children}</div>
         <SiteFooter />
       </body>
     </html>

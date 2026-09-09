@@ -31,12 +31,12 @@ export function CreateTextDocumentForm({ action }: CreateTextDocumentFormProps) 
             aria-busy={isPending}
             className="space-y-5"
         >
-            <div className="space-y-1.5">
+            <div className="grid gap-1.5">
                 <label className="text-sm font-medium" htmlFor="document-title">
                     Title
                 </label>
                 <input
-                    className="h-11 w-full rounded-control border border-border bg-surface px-3 text-sm outline-none transition-shadow focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="h-11 w-full rounded-control border border-border bg-surface px-3 text-base sm:text-sm placeholder:text-muted-foreground transition-colors enabled:hover:border-muted-foreground focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={isPending}
                     id="document-title"
                     maxLength={DOCUMENT_TITLE_MAX_LENGTH}
@@ -47,12 +47,12 @@ export function CreateTextDocumentForm({ action }: CreateTextDocumentFormProps) 
                 />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="grid gap-1.5">
                 <label className="text-sm font-medium" htmlFor="document-text">
                     Document text
                 </label>
                 <textarea
-                    className="min-h-52 w-full resize-y rounded-control border border-border bg-surface px-3 py-3 text-sm leading-6 outline-none transition-shadow focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="min-h-52 w-full resize-y rounded-control border border-border bg-surface px-3 py-3 text-base sm:text-sm leading-6 placeholder:text-muted-foreground transition-colors enabled:hover:border-muted-foreground focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={isPending}
                     id="document-text"
                     maxLength={TEXT_DOCUMENT_MAX_CHARACTERS}
@@ -75,7 +75,7 @@ export function CreateTextDocumentForm({ action }: CreateTextDocumentFormProps) 
             </div>
 
             <button
-                className="inline-flex h-11 items-center justify-center rounded-control bg-accent px-5 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-control bg-accent py-2.5 px-5 text-sm font-semibold text-accent-foreground transition-colors duration-150 enabled:hover:bg-accent-hover enabled:active:bg-accent-active motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isPending}
                 type="submit"
             >
