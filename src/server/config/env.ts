@@ -4,7 +4,6 @@ import { DEFAULT_PDF_MAX_SIZE_BYTES } from "@/shared/documents";
 
 export interface ServerEnvironment {
     DATABASE_URL: string;
-    REDIS_URL: string;
     S3_ENDPOINT: string;
     S3_REGION: string;
     S3_BUCKET: string;
@@ -16,7 +15,6 @@ export interface ServerEnvironment {
 
 const serverEnvironmentSchema = z.object({
     DATABASE_URL: z.url(),
-    REDIS_URL: z.url(),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),
     S3_BUCKET: z.string().min(1),

@@ -21,6 +21,7 @@ services:
             - backend
 
     redis:
+        profiles: ["legacy-redis"]
         image: redis:8.2.9-bookworm
         command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
         ports:

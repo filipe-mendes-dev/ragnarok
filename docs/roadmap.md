@@ -1,6 +1,6 @@
 # RAGnarok Implementation Roadmap
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## Working rule
 
@@ -69,9 +69,22 @@ Failure test: make object storage unavailable and verify no falsely completed do
 
 Target: Day 4
 
-- [ ] Define a minimal versioned ingestion-job DTO.
-- [ ] Enqueue jobs after source creation or text editing.
-- [ ] Implement extraction, deterministic chunking, and chunk metadata.
+Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default; RabbitMQ configuration is pending. The ingestion worker will use Python. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
+
+- [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
+- [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
+- [x] Generate and inspect `worker/uv.lock` with uv; confirm the installed LangChain splitter version.
+- [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
+- [x] Install pytest and verify the existing suite under the configured runner.
+- [x] Add the chunk/configuration schema and generated migration; verify constraints against a fresh Testcontainers database.
+- [ ] Install Psycopg and Python Testcontainers; verify the prepared read-only source/configuration repositories.
+- [ ] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
+- [x] Disable Redis by default and remove the web application's Redis requirement.
+- [ ] Add RabbitMQ configuration, a TypeScript publisher client, and a Python consumer client.
+- [ ] Validate the versioned message in Python and test producer/consumer contract compatibility.
+- [ ] Publish ingestion messages after text submission, verified PDF completion, and revision-safe text editing.
+- [ ] Add a thin Python RabbitMQ consumer that delegates to the ingestion service and acknowledges committed outcomes.
+- [ ] Recover durable pending publication and abandoned processing after failures.
 - [ ] Add bounded retries, backoff, timeouts, structured logs, and safe failure state.
 - [ ] Make duplicate execution and chunk replacement idempotent.
 
@@ -150,7 +163,7 @@ Gate: one command produces a repeatable evaluation report with documented limita
 
 Target: Day 11
 
-- [ ] Test provider timeouts, malformed PDFs, Redis loss, worker crashes, and duplicate jobs.
+- [ ] Test provider timeouts, malformed PDFs, RabbitMQ loss, worker crashes, and duplicate jobs.
 - [ ] Add integration tests for authorization, persistence workflows, and state transitions.
 - [ ] Add Playwright coverage for the critical signed-in document-to-answer flow.
 - [ ] Verify structured error and logging behavior.
@@ -162,7 +175,7 @@ Gate: expected failures reach explicit recoverable or failed states without hang
 Target: Day 12
 
 - [ ] Build separate web and worker targets from one multi-stage Dockerfile.
-- [ ] Add production Compose with Nginx, two identical web containers, worker, PostgreSQL, and Redis.
+- [ ] Add production Compose with Nginx, two identical web containers, worker, PostgreSQL, and RabbitMQ.
 - [ ] Configure internal networking, volumes, runtime secrets, health checks, graceful shutdown, and restart policies.
 - [ ] Configure DNS and HTTPS.
 - [ ] Verify backup and restore steps for durable state.
@@ -184,3 +197,12 @@ Gate: a merge to `main` passes quality gates, deploys predictably, and leaves a 
 ## Final stop condition
 
 Stop adding features when the deployed application supports private asynchronous ingestion, grounded answers, inspectable citations, an understandable trace, and documented evaluation and deployment. Record unfinished optional work as future work rather than delaying shipment.
+
+## Learning after V1
+
+- Compare alternative Python document extractors on the same PDFs.
+- Learn model calls, structured outputs, and tool calling with LangChain where its components help.
+- Build a bounded document-search agent, then explore LangGraph branching, checkpoints, and human approval when the exercise requires them.
+- Evaluate per-user chunking settings before adding alternative active chunk sets.
+
+These exercises do not block Phase 4 or expand the V1 release gate.

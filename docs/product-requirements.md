@@ -4,7 +4,7 @@
 
 - Status: Draft approved for implementation planning
 - Product version: V1 portfolio release
-- Last updated: 2026-09-05
+- Last updated: 2026-09-08
 
 ## Product summary
 
@@ -85,13 +85,13 @@ V1 has no organizations, teams, invitations, or workspace-management interface. 
 ### Security and privacy
 
 - **NFR-01:** User isolation is enforced at every persistence and retrieval boundary.
-- **NFR-02:** PostgreSQL, Redis, and internal application ports are not publicly exposed in production.
+- **NFR-02:** PostgreSQL, RabbitMQ, and internal application ports are not publicly exposed in production.
 - **NFR-03:** Secrets are supplied at runtime and are not committed to Git or stored in traces.
 - **NFR-04:** Uploaded content and document instructions are treated as untrusted data.
 
 ### Reliability
 
-- **NFR-05:** PostgreSQL is the authoritative source for persistent document and application state; Redis is not long-term state storage.
+- **NFR-05:** PostgreSQL is the authoritative source for persistent document and application state; RabbitMQ is not long-term state storage.
 - **NFR-06:** Background jobs use bounded attempts, timeouts, retry backoff, and idempotent persistence behavior where practical.
 - **NFR-07:** Expected failures end in explicit states rather than hanging or silently disappearing.
 - **NFR-08:** Replacement chunks for edited text are committed atomically after new chunks and embeddings are ready.
@@ -127,7 +127,7 @@ V1 has no organizations, teams, invitations, or workspace-management interface. 
 - **Retrieval run:** Per-question execution trace and aggregate stage information.
 - **Retrieval candidate:** A chunk observed during retrieval, fusion, reranking, or final selection, with relevant ranks and scores.
 
-An ingestion-run entity may be added if durable attempt history is needed beyond BullMQ job data and the document's current state. It is not required merely to mirror the retrieval model.
+An ingestion-run entity may be added if durable attempt history is needed beyond the document's current state. It is not required merely to mirror the retrieval model.
 
 ## State models
 
@@ -144,6 +144,8 @@ started -> retrieving -> generating -> completed
 ```
 
 ## Critical runtime rules
+
+The flows below describe the full V1 product. Phase 4 stops after extracting text, persisting chunks, and marking ingestion completed. Embedding generation and semantic retrieval start in Phase 5.
 
 ### PDF ingestion
 
@@ -191,6 +193,10 @@ authenticate user
 -> persist answer and trace
 ```
 
+## Future customization
+
+V1 starts with one chunking method and one active chunk set per document. Chunk sizes may vary to preserve useful text boundaries. Record the method and settings used so later changes can be evaluated. Phase 4 uses a Python ingestion worker and LangChain text splitting. Per-user chunking configuration, simultaneous alternative chunk sets, and agent workflows remain future work.
+
 ## Explicit V1 non-goals
 
 - Organizations, teams, invitations, and shared workspaces
@@ -201,8 +207,8 @@ authenticate user
 - PDF editing
 - Agents, autonomous research, LangGraph, and MCP
 - Microservices and elaborate event-driven architecture
-- Kafka, RabbitMQ, NATS, Kubernetes, and Terraform
-- PostgreSQL or Redis high-availability clusters
+- Kafka, NATS, Kubernetes, and Terraform
+- PostgreSQL or RabbitMQ high-availability clusters
 - Billing, subscriptions, public sharing, and complex account management
 - Custom email infrastructure
 - Native mobile applications

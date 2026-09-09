@@ -6,7 +6,6 @@ function createValidEnvironment(): NodeJS.ProcessEnv {
     return {
         NODE_ENV: 'test',
         DATABASE_URL: 'postgresql://ragnarok:password@localhost:5432/ragnarok',
-        REDIS_URL: 'redis://localhost:6379',
         S3_ENDPOINT: 'http://localhost:9000',
         S3_REGION: 'us-east-1',
         S3_BUCKET: 'ragnarok-documents',
