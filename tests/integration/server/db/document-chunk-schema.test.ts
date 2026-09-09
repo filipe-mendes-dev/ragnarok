@@ -140,7 +140,7 @@ describe("document chunk constraints", () => {
     it("prevents deleting a configuration referenced by a chunk", async () => {
         await database.insert(documentChunk).values(createChunkInput(await seedOwnedDocument(), configId));
         await expect(database.delete(chunkConfig).where(eq(chunkConfig.id, configId)))
-            .rejects.toMatchObject({ cause: { code: "23503", constraint: "document_chunk_chunk_config_id_chunk_config_id_fk" } });
+            .rejects.toMatchObject({ cause: { code: "23001", constraint: "document_chunk_chunk_config_id_chunk_config_id_fk" } });
     });
 
     it("rejects duplicate configuration settings", async () => {
