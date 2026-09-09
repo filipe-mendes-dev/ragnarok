@@ -73,8 +73,9 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 
 - [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
 - [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
-- [ ] Generate and review `worker/uv.lock` with `uv sync`; use uv for Python setup and execution.
-- [ ] Verify the Python LangChain chunker and its unit tests after installing worker dependencies. The implementation and sample are in `worker/`; installation and execution are pending.
+- [x] Generate and inspect `worker/uv.lock` with uv; confirm the installed LangChain splitter version.
+- [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
+- [ ] Install pytest with `uv add --dev pytest` and verify the same suite under the configured runner.
 - [ ] Add the chunk schema and generated migration; verify constraints against a fresh Testcontainers database.
 - [ ] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
