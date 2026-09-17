@@ -30,3 +30,32 @@ def find_chunk_config(
             (config_id,),
         )
         return cursor.fetchone()
+
+
+def insert_chunk_config_if_missing(
+    connection: Connection[tuple[object, ...]],
+    method: str,
+    size: int,
+    overlap: int,
+) -> UUID:
+    """Reuse an immutable configuration without updating an existing row."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO chunk_config (chunking_method, chunk_size, chunk_overlap)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (chunking_method, chunk_size, chunk_overlap) DO NOTHING
+            """,
+            (method, size, overlap),
+        )
+        cursor.execute(
+            """
+            SELECT id FROM chunk_config
+            WHERE chunking_method = %s AND chunk_size = %s AND chunk_overlap = %s
+            """,
+            (method, size, overlap),
+        )
+        row = cursor.fetchone()
+        if row is None or not isinstance(row[0], UUID):
+            raise RuntimeError("Chunk configuration was not persisted")
+        return row[0]
