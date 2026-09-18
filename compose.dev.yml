@@ -1,6 +1,26 @@
 name: ragnarok
 
 services:
+    rabbitmq:
+        image: rabbitmq:4-management
+        hostname: ragnarok-rabbitmq
+        environment:
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-ragnarok}
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-ragnarok_dev_password}
+        ports:
+            - "127.0.0.1:5672:5672"
+            - "127.0.0.1:15672:15672"
+        volumes:
+            - rabbitmq_data:/var/lib/rabbitmq
+        healthcheck:
+            test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+        restart: unless-stopped
+        networks:
+            - backend
+
     postgres:
         image: pgvector/pgvector:0.8.6-pg18-bookworm
         environment:
@@ -77,6 +97,7 @@ services:
             - backend
 
 volumes:
+    rabbitmq_data:
     postgres_data:
     redis_data:
     minio_data:
