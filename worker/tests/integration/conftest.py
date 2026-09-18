@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 from psycopg import Connection
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 from ragnarok_ingestion.database import connect_database
 
