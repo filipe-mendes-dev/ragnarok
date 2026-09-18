@@ -253,7 +253,7 @@ PDF uploads use a two-phase object-storage workflow. The server authenticates th
 
 RabbitMQ replaces the earlier BullMQ/Redis plan. It connects the TypeScript publisher and the planned Python worker through established messaging clients. Learning message delivery and acknowledgements is an explicit project goal. The trade-off is more application work for retry delays, attempt limits, and failure handling than BullMQ supplies through job options.
 
-RabbitMQ does not use Redis. Redis is disabled by default behind the `legacy-redis` Compose profile, and the web environment no longer requires `REDIS_URL`. Its volume is retained. An existing Redis container must be stopped explicitly; changing profiles does not stop a running container. RabbitMQ configuration remains pending. The topology below describes the target, not infrastructure already implemented.
+RabbitMQ does not use Redis. Redis is disabled by default behind the `legacy-redis` Compose profile, and the web environment no longer requires `REDIS_URL`. Its volume is retained. An existing Redis container must be stopped explicitly; changing profiles does not stop a running container. RabbitMQ is configured in `compose.dev.yml`. The Python text consumer is implemented; automatic publication from Next.js remains pending.
 
 Start with one ingestion queue and one Python worker process. The worker delegates to an ingestion service and initially processes one document at a time. A single message covers loading, extraction, chunking, and persistence. Retries may repeat computation; duplicate persisted chunks remain forbidden. PostgreSQL stores document status and chunks. RabbitMQ carries a versioned message containing `version`, `documentId`, `revision`, and `userId`; it does not carry source contents or storage credentials. The producer supplies the authenticated owner, and the service checks ownership and revision in its database query before reading a source.
 
@@ -294,15 +294,19 @@ No embeddings, lexical-search fields, or source offsets are added in this step. 
 
 ## Python worker integration plan
 
-The Python package contains chunking and read-only source/configuration repositories. Their new Psycopg/Testcontainers dependencies and Python database tests await installation and execution. The following describes the planned integration, not implemented broker or database code.
+The Python package contains text chunking, PostgreSQL repositories, a text ingestion service, Pydantic message validation, and an aio-pika consumer. PostgreSQL repository and service tests have passed against disposable containers. Installation of aio-pika and execution of the broker integration test remain pending. The following describes the target Next.js integration; the web publisher is not implemented yet.
 
 Next.js authenticates the user and saves the source through its existing TypeScript services and Drizzle repositories. It publishes a versioned JSON message through RabbitMQ. A separately running Python consumer validates that message and delegates to the Python ingestion service. The service queries PostgreSQL with owner, document, and revision filters before accessing the source, then calls extraction and chunking. The web application continues to read status from PostgreSQL through Drizzle; no callback to Next.js is required for completion.
 
 Use Pydantic for the incoming Python message when that boundary is implemented, with strict validation and forbidden extra fields. It plays the same validation role as Zod. Preserve the existing JSON field names across languages and test the same valid and invalid messages in both runtimes. Internal chunk values remain dataclasses. Pydantic is not a persistence layer or an authorization mechanism.
 
-The recommended initial database client is Psycopg 3 with parameterized SQL in focused Python repositories. Read-only Psycopg repositories are prepared; dependency installation and Python database verification are pending. Psycopg handles PostgreSQL connections and queries; an ORM is not required for the small ingestion query set. Drizzle continues to define and generate the shared schema and migrations. Python tests apply those same migrations to disposable PostgreSQL infrastructure; the worker does not create tables or introduce Alembic migrations.
+The recommended initial database client is Psycopg 3 with parameterized SQL in focused Python repositories. Psycopg repositories and their database tests are implemented and verified. Psycopg handles PostgreSQL connections and queries; an ORM is not required for the small ingestion query set. Drizzle continues to define and generate the shared schema and migrations. Python tests apply those same migrations to disposable PostgreSQL infrastructure; the worker does not create tables or introduce Alembic migrations.
 
-Python services own transaction boundaries and pass a connection to repositories. Claiming work uses a short transaction. Extraction and chunking happen outside it. Final persistence rechecks the current revision and claim, replaces chunks, and marks completion in one transaction. A consumer acknowledges the message after the outcome is committed. Retrying computation is acceptable; duplicate or stale persisted chunks are not.
+Python services own transaction boundaries and pass a connection to repositories. The text service opens a dedicated PostgreSQL connection and acquires a session advisory lock derived from the document ID. This serializes cooperating ingestion workers for the same document. It does not prevent a web edit; owner and revision predicates reject stale results. The connection closes after each job, releasing its advisory lock. Do not put this connection behind transaction-mode pooling.
+
+A short transaction transitions queued or interrupted processing work to processing. Chunking runs outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks. Both writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
+
+The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Only queued or processing text documents are eligible in this step. Do not publish PDF jobs until extraction is implemented. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
 
 Using Python means SQL queries do not inherit Drizzle's compile-time schema checks. Typed row mapping, shared contract fixtures, and database integration tests must catch drift. Implement Python ingestion operations only; do not copy the web application's upload and listing services.
 
@@ -370,3 +374,35 @@ packages/
 - FastAPI fits when meaningful Python-only retrieval, ML, or data-processing libraries justify a Python runtime.
 
 Technology migration is not itself a goal. A future framework must solve a demonstrated runtime, ownership, client, or ecosystem problem.
+
+## Current text-worker sequence
+
+```mermaid
+sequenceDiagram
+    participant Q as RabbitMQ
+    participant W as Python consumer
+    participant S as Ingestion service
+    participant DB as PostgreSQL
+    Q->>W: Document ID, owner ID, revision, version
+    W->>W: Validate JSON
+    W->>S: Run text ingestion
+    S->>DB: Acquire document advisory lock
+    S->>DB: Commit processing for matching owned revision
+    S->>S: Split source with LangChain
+    S->>DB: Commit replacement chunks and completed together
+    S->>DB: Close connection and release lock
+    S-->>W: Outcome
+    W->>Q: Acknowledge delivery
+```
+
+```mermaid
+stateDiagram-v2
+    uploaded --> queued: Publisher integration pending
+    queued --> processing: Worker accepts matching revision
+    processing --> processing: Redelivery after interrupted processing
+    processing --> completed: Atomic chunk replacement
+    processing --> failed: Invalid text source
+```
+
+Infrastructure errors currently leave the delivery unacknowledged. They do not
+pretend that the document completed. Persistent failure handling is still pending.

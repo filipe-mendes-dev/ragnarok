@@ -69,7 +69,7 @@ Failure test: make object storage unavailable and verify no falsely completed do
 
 Target: Day 4
 
-Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default; RabbitMQ configuration is pending. The ingestion worker will use Python. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
+Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default; RabbitMQ is configured; installing the consumer dependency and verifying broker delivery are pending. The ingestion worker will use Python. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
 
 - [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
 - [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
@@ -77,7 +77,9 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
 - [x] Install pytest and verify the existing suite under the configured runner.
 - [x] Add the chunk/configuration schema and generated migration; verify constraints against a fresh Testcontainers database.
-- [ ] Install Psycopg and Python Testcontainers; verify the prepared read-only source/configuration repositories.
+- [x] Install Psycopg and Python Testcontainers; verify the source/configuration repositories.
+- [x] Implement and verify text ingestion, revision guards, atomic chunk replacement, and advisory-lock coordination.
+- [ ] Install aio-pika and verify the prepared RabbitMQ consumer integration test.
 - [ ] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
 - [ ] Add RabbitMQ configuration, a TypeScript publisher client, and a Python consumer client.

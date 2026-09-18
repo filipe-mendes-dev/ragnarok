@@ -1,187 +1,198 @@
-# Python ingestion
+# Python ingestion worker
 
-The worker package splits extracted text with LangChain and now includes read-only
-PostgreSQL repositories for text sources and chunk configurations. It does not
-consume RabbitMQ messages, read PDFs, persist chunks, or generate embeddings yet.
+The worker consumes RabbitMQ messages and ingests queued text documents. It loads
+an owned revision from PostgreSQL, splits it with LangChain, and saves its chunks.
+PDF extraction and automatic publication from Next.js are not implemented yet.
+This is the first text-worker step, not the completed Phase 4 pipeline.
 
-## Setup
+## Install and run
 
-Use uv to manage the Python project. On macOS with Homebrew, install uv once:
-
-```bash
-brew install uv
-```
-
-The initial uv environment and lockfile have been generated. The pytest runner is
-the next development dependency. From `worker/`, run `uv add --dev pytest` once
-and review the resulting `pyproject.toml` and `uv.lock` changes. Until then, the
-existing tests still run with `uv run python -m unittest discover -s
-tests/unit/ragnarok_ingestion -v` on one line.
-
-For normal use, run from the repository root:
+From `worker`, update the environment and uv-generated lockfile:
 
 ```bash
-cd worker
 uv sync
-uv run python -m pytest -v
-uv run python examples/chunk_text.py
 ```
 
-`uv sync` reads `pyproject.toml`, resolves dependencies into `uv.lock`, and installs
-them into `.venv`. It also installs this package in editable mode, so source edits
-take effect without reinstalling. `.python-version` selects Python 3.14. uv can
-download an appropriate Python interpreter if it cannot find one locally.
+`pyproject.toml` now declares `aio-pika` and Pydantic directly. aio-pika speaks the
+RabbitMQ protocol and handles connection I/O. Pydantic validates incoming JSON,
+like Zod in TypeScript. Neither the standard library nor Psycopg provides an AMQP
+client. uv owns `uv.lock`; do not edit it manually.
 
-`uv run` executes a command in that environment. There is no activation step and
-no need to use `.venv/bin/python` directly. `python -m pytest` runs the test runner.
-`testpaths` in `pyproject.toml` tells it to search `tests/`; `-v` prints individual
-test names. The existing unittest classes are compatible with pytest. New tests
-can use plain functions, assertions, and parametrization rather than requiring classes.
-
-This project already has `pyproject.toml`, so do not run `uv init` again. uv supports
-the existing setuptools build backend; adopting uv does not require replacing it.
-Setuptools tells the installer how to find and install our package under `src`.
-
-Commit the generated `uv.lock` after reviewing it, alongside `pyproject.toml` and
-`.python-version`. Keep `.venv` untracked. Use `uv sync --locked` in CI to reject
-an outdated lockfile. The current LangChain environment and lock have been inspected;
-pytest installation remains pending.
-
-To add a dependency later, use `uv add <package>` from `worker/`. That updates the
-declaration, lockfile, and environment together. Use `--dev` for tools such as pytest
-that the production worker does not need.
-
-## Files and Python concepts
-
-- `pyproject.toml` declares the project and dependencies, similar to `package.json`.
-- `.python-version` selects the default interpreter version for uv.
-- `src/ragnarok_ingestion/__init__.py` identifies the Python package. It does not start a process.
-- `src/ragnarok_ingestion/chunking.py` defines the splitting function and its data objects.
-- `examples/chunk_text.py` is a script that calls the function and prints results.
-- `tests/unit/ragnarok_ingestion/test_chunking.py` checks behavior using the real splitter.
-- `AGENTS.md` records the Python learning and implementation conventions.
-
-`def` declares a function; indentation defines its body. An annotation such as
-`text: str` describes the expected type but does not validate it at runtime.
-`raise ValueError(...)` rejects an invalid value, similar to throwing an error.
-
-`@dataclass(frozen=True)` creates a data object with generated initialization and
-equality methods, and prevents normal field reassignment. `__post_init__` runs
-after initialization, which is where settings validate their values. Python's
-`bool` is a subclass of `int`, so the exact `type(...) is int` check intentionally
-rejects `True` as a chunk size.
-
-The list comprehension in `chunk_text` builds one `TextChunk` for each split.
-`enumerate` supplies both its index and text, similar to the index argument in a
-TypeScript `map` callback. The example's `if __name__ == "__main__"` block runs the
-demo only when the file is executed directly, not when another module imports it.
-
-## Where Pydantic belongs
-
-Pydantic is a candidate for the future RabbitMQ input boundary, playing a role
-similar to Zod in the web application. It validates external JSON and creates a
-typed object. The planned consumer must reject unsupported versions, invalid IDs,
-invalid revisions, missing ownership, and unexpected fields. Use explicit strict
-validation rather than silently accepting coercions such as a numeric string for
-a revision. Both languages must agree on the same JSON names and constraints.
-
-Pydantic is not an ORM, a migration system, or an authorization check. Keep internal
-chunk values as dataclasses. No direct Pydantic dependency or message validator
-has been added yet; when our own code imports it, declare it directly even if
-LangChain already brings it in transitively.
-
-## Chunking behavior
-
-`chunk_text` returns `TextChunk` values with a zero-based ordinal and text.
-Frozen dataclasses describe settings and output without mutable shared state.
-Python annotations describe types; the function also rejects invalid source types,
-and settings validate integer sizes at runtime.
-
-The initial defaults are 1,000 characters and a target overlap of 150 characters.
-They are trial settings, not measured retrieval optima. Size uses Python's `len`,
-which counts Unicode code points, not UTF-8 bytes, JavaScript UTF-16 units, or model
-tokens. Token limits will be addressed when an embedding model is selected.
-
-The splitter tries paragraph breaks, line breaks, spaces, then individual characters.
-It may split a sentence. Overlap is a target and can be smaller at paragraph boundaries.
-Line endings are normalized to LF and surrounding whitespace is stripped. Blank
-sources raise `ValueError`; an ingestion service will later map that to a safe failure.
-Meaningful repeated passages are preserved. Retained separators count toward the
-size during splitting, even when they are later stripped. At very small limits,
-a word that appears to fit can therefore split further. Preservation tests must
-not assume all repeated words produce identical chunk boundaries.
-
-This module expects bounded source text from the future loader. Download, page,
-extraction, and execution limits belong to the later ingestion step. It carries no
-document IDs, revision, PDF page metadata, or source offsets yet. Those will be
-attached by the ingestion service when source loading and persistence are designed.
-Persist `CHUNKING_METHOD` and the settings with the resulting chunk set so we can
-identify how it was produced. Change the method version when normalization or
-splitting behavior changes.
-
-Tests use the real LangChain splitter. The example prints the same sample with two
-size settings so we can review boundaries before building persistence.
-
-## Why keep the example
-
-The example is a manual inspection tool, not a test fixture or production entry
-point. Tests do not import it. Keep it while evaluating chunk settings: it shows
-that a small limit can produce a heading-only chunk such as `Processing`. Passing
-unit tests proves the tested splitting rules, not retrieval quality. Later we can
-replace this demo with representative evaluation documents.
-
-## PostgreSQL reads
-
-From `worker/`, install the new dependencies as part of the learning flow:
+Copy the RabbitMQ variables from the root `.env.example` to your existing `.env`.
+Do not replace your existing environment file. From the repository root, run:
 
 ```bash
-uv add "psycopg[binary]"
-uv add --dev "testcontainers[postgres]"
+docker compose -f compose.dev.yml up -d rabbitmq
+docker compose -f compose.dev.yml ps rabbitmq
+```
+
+RabbitMQ's dashboard is at http://localhost:15672. Its default local credentials
+are `ragnarok` and `ragnarok_dev_password`. Port 5672 is for application connections;
+15672 is for the dashboard. Both bind only to localhost. The named volume preserves
+broker data across ordinary container restarts. The hostname keeps RabbitMQ's node
+identity stable. This development image follows the RabbitMQ 4 major series.
+
+From `worker`, start the consumer:
+
+```bash
+uv run --env-file ../.env python -m ragnarok_ingestion
+```
+
+uv loads the root environment and runs the installed Python package. Python calls
+its `__main__.py`. The worker stays running until interrupted or an unrecovered
+error occurs. No HTTP server is involved. It declares the durable queues
+`ragnarok.ingestion.v1` and `ragnarok.ingestion.rejected.v1`.
+
+Starting the worker does not enqueue existing documents. Next.js publication is
+the next step. The broker integration test seeds a queued text document and sends
+a real message, so we can verify this worker before connecting uploads.
+
+## Follow one message through the files
+
+1. `__main__.py` reads `DATABASE_URL` and `RABBITMQ_URL`, configures logging, and
+   starts the consumer. It contains no ingestion workflow. Missing variables
+   produce a short startup error.
+2. `consumer.py` connects to RabbitMQ and asks for one unacknowledged message at a
+   time with `prefetch_count=1`. It validates the message, calls the service, then
+   acknowledges the delivery. An acknowledgement tells RabbitMQ it can remove that
+   delivery. It does not update the document in PostgreSQL.
+3. `ingestion_input.py` checks version, UUID, positive revision, owner, and unexpected
+   fields. `Field(alias="documentId")` accepts the existing TypeScript JSON name
+   while Python uses `job.document_id`. `@field_validator` registers a validation
+   method with Pydantic. `@classmethod` passes the model class as `cls`. These methods
+   run during validation, not when the worker accesses an already validated field.
+4. `ingestion_service.py` owns the workflow and its two database transactions. It
+   first commits `processing`, then calls the chunker outside a transaction. Its
+   final transaction saves both replacement chunks and `completed`.
+5. `document_repository.py` contains ownership/revision-filtered SQL, status updates,
+   and the advisory-lock query. A successful conditional UPDATE locks the document
+   row until its transaction ends. That prevents an edit between checking the
+   revision and saving the chunks.
+6. `chunk_config_repository.py` inserts the method/size/overlap combination if absent,
+   then reads its ID. `ON CONFLICT DO NOTHING` reuses an existing configuration without
+   changing its historical settings.
+7. `chunk_repository.py` deletes previous chunks and inserts the replacement set.
+   Both operations use the service's transaction. `executemany` executes the same
+   parameterized insert with each chunk's values. Text chunks have a null page number.
+8. `database.py` opens a dedicated Psycopg connection with a five-second connection
+   timeout, ten-second statement timeout, and three-second lock timeout.
+9. `chunking.py` remains the pure LangChain splitter. It knows nothing about RabbitMQ
+   or database transactions. `examples/chunk_text.py` remains a manual inspection tool.
+
+The consumer uses `async def` because broker operations can wait without blocking
+other connection work. `await` suspends that coroutine until an operation finishes.
+`asyncio.run` starts Python's event loop, which manages those waits.
+`await asyncio.to_thread(ingest_text_document, ...)` runs our synchronous database
+and chunking function on another thread. This lets the event loop handle RabbitMQ
+heartbeats. It does not make several documents run at once; the consumer still
+awaits each result before receiving the next job.
+
+## Transactions, locks, and retries
+
+A transaction groups SQL changes that must succeed or fail together. Here, deleting
+old chunks, inserting replacements, and marking completed form one transaction.
+Although the status UPDATE appears first in the code, other connections cannot see
+completed until every statement succeeds and the transaction commits. A failed
+insert rolls back the completion update and restores the old chunks.
+
+A session advisory lock is a PostgreSQL lock our workers agree to acquire for a
+document ID. It lasts across both short transactions and the chunking work. Closing
+the dedicated connection releases it, including when PostgreSQL detects a lost
+worker connection. Hash collisions can serialize unrelated documents, but cannot
+mix their data. Do not reuse this design through transaction-mode connection pooling.
+
+Web edits do not acquire this advisory lock. They must increment the revision when
+changing the source. Every worker status update checks owner, ID, revision, and
+expected status, so an old job cannot finish a newer revision. Completed jobs are
+ignored on redelivery, preserving the existing chunk IDs.
+
+Queued and processing text documents are eligible. Processing can be reclaimed
+once an interrupted worker's advisory lock is gone. Uploaded documents, PDFs,
+completed/failed documents, missing documents, and unmatched ownership/revisions
+are currently ignored. Do not send PDF jobs to this text-only worker yet.
+
+Invalid JSON goes to the rejected queue without printing its content. Temporary
+Psycopg operational errors and busy document locks get three attempts per delivery,
+with one- and two-second delays. If those fail, the process exits without acknowledging.
+An unexpected processing exception also stops the process. Restart allows RabbitMQ
+to redeliver unacknowledged work. Oversized or blank text receives a fixed safe
+failure summary in PostgreSQL.
+
+Still pending before Phase 4 is complete:
+
+- Durable attempt counts and terminal handling of unexpected processing failures.
+- Recovery of a saved document whose message was never published.
+- Production supervision and graceful drain behavior on shutdown.
+- Bounded PDF loading/extraction and its failure policy.
+- Cross-runtime contract fixtures and explicit broker/crash fault tests.
+
+The current attempt limit resets after restart. The thread wrapper is not a hard
+execution timeout. Do not describe either as full crash recovery or bounded PDF
+execution. Messages must be persistent and publisher-confirmed when Next.js
+publication is implemented; durable queues alone do not provide that guarantee.
+
+## Tests and the meaning of yield
+
+From `worker`, with Docker running and root npm dependencies installed:
+
+```bash
 uv run python -m pytest tests/unit -v
 uv run python -m pytest tests/integration -v
 ```
 
-Psycopg is the database driver. The binary extra supplies the compiled driver
-without requiring local PostgreSQL build tools. Testcontainers starts disposable
-PostgreSQL for tests. Docker must be running, and the repository's npm dependencies
-must be installed. Until these Python dependencies are installed, run only `tests/unit`.
+`conftest.py` is pytest's automatically discovered fixture configuration. A test that
+names `database` as a parameter asks pytest to prepare that fixture and pass its
+value. Fixtures may themselves request other fixtures through their parameters.
 
-New files:
+Consider the existing fixture:
 
-- `database.py` opens a connection with connection, statement, and lock timeouts.
-- `document_repository.py` reads text by document ID, owner ID, and revision in the same query. PDFs and unmatched rows return `None`.
-- `chunk_config_repository.py` reads a configuration by ID. It does not create or update settings.
-- `tests/integration/conftest.py` provides a disposable database and per-test rollback.
-- `tests/integration/ragnarok_ingestion/` checks reads, ownership, stale revisions, missing records, and PDF exclusion.
+```python
+@pytest.fixture
+def database(migrated_database_url: str) -> Iterator[Connection[tuple[object, ...]]]:
+    with connect_database(migrated_database_url) as connection:
+        with connection.transaction(force_rollback=True):
+            yield connection
+```
 
-A connection is a session with PostgreSQL. A cursor executes a query and reads its
-results. The `with` statement closes the cursor when execution leaves its block,
-including after an exception. The caller owns the connection and must close it.
+`yield` pauses the function and gives the connection to pytest. The connection and
+transaction remain open while the test runs. After the test, pytest resumes the
+function after `yield`, even if the test failed. Leaving the transaction block rolls
+back the test's writes, then leaving the connection block closes it. `return` would
+exit those blocks before the test could use the connection.
 
-SQL `%s` placeholders receive a separate tuple of values. They are not Python
-string interpolation. In `(config_id,)`, the trailing comma creates a one-element
-tuple. This keeps user input out of the SQL syntax. Psycopg adapts `UUID` values to
-PostgreSQL UUIDs automatically.
+A function containing `yield` is a generator. `Iterator[...]` describes the values
+it yields, here database connections. This fixture yields exactly once; there is no
+loop. Python generators also support repeated yields, but pytest yield fixtures
+must provide one value per invocation.
 
-`class_row(TextDocumentSource)` uses result column names to construct the dataclass.
-It is a row mapper, not Pydantic validation. The query and database constraints
-supply the expected shape; integration tests catch schema mismatches. `fetchone()`
-returns a matching object or `None`. The repositories do not claim work or decide
-whether a status is eligible for ingestion.
+The session fixture yields a disposable database URL after starting PostgreSQL and
+applying committed Drizzle migrations. It resumes after the session's tests finish,
+then stops the container. Service tests need real commits through independent
+connections, so they seed directly and delete their owned rows in `finally` instead
+of wrapping the service in the repository tests' rollback fixture.
 
-`autocommit=True` means these reads do not leave an implicit transaction open.
-Future service writes will use explicit `connection.transaction()` blocks to
-commit chunk replacement and completion together. Extraction must happen outside
-that transaction.
+- Input tests exercise accepted messages and malformed fields.
+- Repository tests cover stored values, ownership, revisions, and missing records.
+- Service tests cover completion, duplicate delivery, advisory locks, edits during
+  chunking, interrupted processing, safe failure, and rollback after an insert fails.
+- The broker test uses disposable RabbitMQ and PostgreSQL. It publishes a document
+  message twice and malformed JSON, then checks persisted chunks and rejected delivery.
 
-A pytest fixture supplies setup to tests that name it as an argument. `yield`
-hands the resource to the test, then runs the remaining cleanup afterward.
-The session fixture shares only expensive container setup. Each test gets a
-separate connection and a transaction that always rolls back its seed rows.
-This rollback fixture is intended for these read-only repository tests; future
-service commit tests need independent connections and explicit cleanup.
+## Chunking settings
 
-The container fixture runs the existing `npm run db:migrate` command from the
-repository root. It overrides `DATABASE_URL` with the disposable container URL
-before running the command. It never loads a development URL for test queries,
-reimplements migration ordering, or creates a Python migration history.
+The initial defaults are 1,000 Unicode code points and a target overlap of 150.
+These are trial values, not measured retrieval optima. Python `len` counts code
+points, not UTF-8 bytes, JavaScript UTF-16 units, or model tokens.
+
+The splitter prefers paragraphs, lines, spaces, then characters. It normalizes line
+endings and strips surrounding whitespace. Overlap may be smaller at boundaries.
+Retained separators count toward the splitting limit before trimming, so very small
+limits can split otherwise short words. Meaningful repeated passages remain present.
+Change `CHUNKING_METHOD` when normalization or splitting behavior changes.
+
+## PostgreSQL topics to learn next
+
+Start with primary/foreign keys and unique constraints, then transactions and
+commit/rollback. Follow with connections versus cursors, row locks and concurrent
+updates, and finally indexes and query plans. The service's final transaction is a
+concrete exercise in why several successful individual queries are not sufficient.
