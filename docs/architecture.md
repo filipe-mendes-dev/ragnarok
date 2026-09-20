@@ -294,7 +294,7 @@ No embeddings, lexical-search fields, or source offsets are added in this step. 
 
 ## Python worker integration plan
 
-The Python package contains text chunking, PostgreSQL repositories, a text ingestion service, Pydantic message validation, and an aio-pika consumer. PostgreSQL repository and service tests have passed against disposable containers. Installation of aio-pika and execution of the broker integration test remain pending. The following describes the target Next.js integration; the web publisher is not implemented yet.
+The Python package contains text chunking, PostgreSQL repositories, a text ingestion service, Pydantic message validation, and an aio-pika consumer. The TypeScript document service now calls `publishIngestionJob` after saving a text document and committing its queued state. PDF uploads do not publish until extraction is implemented.
 
 Next.js authenticates the user and saves the source through its existing TypeScript services and Drizzle repositories. It publishes a versioned JSON message through RabbitMQ. A separately running Python consumer validates that message and delegates to the Python ingestion service. The service queries PostgreSQL with owner, document, and revision filters before accessing the source, then calls extraction and chunking. The web application continues to read status from PostgreSQL through Drizzle; no callback to Next.js is required for completion.
 
@@ -397,7 +397,7 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    uploaded --> queued: Publisher integration pending
+    uploaded --> queued: Text submission commits queued before publication
     queued --> processing: Worker accepts matching revision
     processing --> processing: Redelivery after interrupted processing
     processing --> completed: Atomic chunk replacement
@@ -406,3 +406,71 @@ stateDiagram-v2
 
 Infrastructure errors currently leave the delivery unacknowledged. They do not
 pretend that the document completed. Persistent failure handling is still pending.
+
+## TypeScript publication boundary
+
+`publishIngestionJob(rabbitmqUrl, input)` validates the existing job input and opens
+an amqplib confirm channel. It declares the same durable queues and dead-letter
+routing as Python, publishes persistent JSON with mandatory routing, and waits for
+broker confirmation. A confirmation means RabbitMQ accepted the publication; it
+does not mean Python finished processing. A returned unroutable message is an error
+even if RabbitMQ also confirms it.
+
+Each call owns one connection, avoiding shared-channel correlation and reconnection
+state for this first step. This costs a connection handshake per job. There is a
+five-second connection timeout and a ten-second overall deadline that aborts the
+underlying socket. Timeout or connection failure can leave delivery uncertain, so
+callers must tolerate duplicate publication. Raw broker errors are replaced with
+fixed `unavailable`, `unroutable`, or `timeout` errors.
+
+AMQP `messageId` is `ingestion:<documentId>:<revision>`. It identifies the logical
+job across repeated publications; it is not an attempt ID and RabbitMQ does not
+use it to deduplicate messages. The JSON payload is unchanged. The publisher does
+not update document status, authenticate users, retry, or call an embedding provider.
+The document service supplies authenticated ownership and owns scheduling.
+
+Text submission inserts uploaded, conditionally changes the owned revision to queued,
+then publishes outside any database transaction. The worker can therefore claim an
+immediately delivered message. These are separate commits: a crash can leave uploaded
+or queued work without a message. Backfill, publication recovery, and the outbox remain
+deferred. A failed broker confirmation can mean delivery is uncertain; the action tells
+the user the document was saved and does not reset state or delete the source. No retry
+UI exists yet. Reopening the list shows persisted status; refresh to see worker updates.
+
+The adapter accepts a URL explicitly. The default service publisher validates
+RABBITMQ_URL only when publishing; unrelated reads do not require it.
+
+Queue names are required deployment configuration: `INGESTION_QUEUE_NAME` and
+`INGESTION_REJECTED_QUEUE_NAME`. Both runtimes reject missing, blank, or identical
+names. Local Next.js and the uv worker load the root `.env`; production deployment
+must supply matching values to both processes, including when hosted separately.
+No cross-runtime file import or fallback queue names are used. Existing development
+Compose runs infrastructure only, so these variables belong to the host applications,
+not the RabbitMQ container. Both clients declare the queue durability and routing.
+
+## Current observability
+
+Python uses the standard `logging` module. Its entry point configures INFO-level
+output with level and message on stderr. It logs readiness, invalid-message
+rejection, document/revision/outcome after acknowledgement, keyboard shutdown, and
+a generic fatal error. It does not log document contents or raw driver exceptions.
+These are plain text logs, not JSON event records, and the configured format does
+not include timestamps. Per-attempt logs, durations, stack diagnostics, and a
+persistent log collector are not implemented.
+
+PostgreSQL stores the current document status, safe processing error, revision,
+and timestamps. It does not yet store an ingestion attempt/event history. The
+RabbitMQ management image provides its dashboard and broker statistics such as
+queue depth and delivery rates. Acknowledged messages are removed; the management
+UI is not a searchable history of completed ingestion. The rejected queue retains
+rejected messages until consumed or otherwise removed; it is not an audit log.
+
+The web health endpoint returns a static liveness response. It does not test
+PostgreSQL, RabbitMQ, or worker readiness. No distributed tracing, OpenTelemetry
+instrumentation, metrics collection/alerting, or completed RAG trace storage is
+implemented. The trace requirements elsewhere in this document are future work.
+
+The next observability step should add timestamped structured events with document,
+revision, stage, attempt, duration, and outcome, using the same logical job identity
+in both runtimes. Propagated trace context and durable ingestion history are separate
+choices; AMQP message IDs and console output alone do not provide them.

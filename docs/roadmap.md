@@ -69,7 +69,7 @@ Failure test: make object storage unavailable and verify no falsely completed do
 
 Target: Day 4
 
-Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default; RabbitMQ is configured; installing the consumer dependency and verifying broker delivery are pending. The ingestion worker will use Python. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
+Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default. Text submission now saves the source, commits queued state, and publishes to the Python worker. PDF publication waits for extraction support. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
 
 - [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
 - [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
@@ -79,13 +79,16 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [x] Add the chunk/configuration schema and generated migration; verify constraints against a fresh Testcontainers database.
 - [x] Install Psycopg and Python Testcontainers; verify the source/configuration repositories.
 - [x] Implement and verify text ingestion, revision guards, atomic chunk replacement, and advisory-lock coordination.
-- [ ] Install aio-pika and verify the prepared RabbitMQ consumer integration test.
+- [x] Install aio-pika and verify the RabbitMQ consumer integration test.
 - [ ] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
-- [ ] Add RabbitMQ configuration, a TypeScript publisher client, and a Python consumer client.
+- [x] Add RabbitMQ configuration and a Python consumer client.
+- [x] Install amqplib and connect the TypeScript publisher to text submission.
+- [x] Configure matching queue names through required environment variables in both runtimes.
 - [ ] Validate the versioned message in Python and test producer/consumer contract compatibility.
-- [ ] Publish ingestion messages after text submission, verified PDF completion, and revision-safe text editing.
-- [ ] Add a thin Python RabbitMQ consumer that delegates to the ingestion service and acknowledges committed outcomes.
+- [x] Publish ingestion messages after text submission.
+- [ ] Publish after verified PDF completion and revision-safe text editing.
+- [x] Add a thin Python RabbitMQ consumer that delegates to the ingestion service and acknowledges committed text outcomes.
 - [ ] Recover durable pending publication and abandoned processing after failures.
 - [ ] Add bounded retries, backoff, timeouts, structured logs, and safe failure state.
 - [ ] Make duplicate execution and chunk replacement idempotent.
@@ -147,6 +150,8 @@ Target: Day 9
 - [ ] Display filters, models, prompt version, candidates, scores, selected chunks, latencies, tokens, and safe errors.
 - [ ] Correlate answer, trace, request, and logs.
 - [ ] Sanitize all public trace fields.
+- [ ] Agree on operational observability before implementation: shared JSON log fields, severity rules, safe diagnostics, identifiers, and stage durations across TypeScript and Python.
+- [ ] Add OpenTelemetry tracing across publication and worker processing using AMQP headers; keep diagnostic traces separate from persisted user-facing RAG traces.
 
 Gate: a recruiter can inspect the full retrieval-to-generation path from an answer without server access.
 
@@ -169,6 +174,7 @@ Target: Day 11
 - [ ] Add integration tests for authorization, persistence workflows, and state transitions.
 - [ ] Add Playwright coverage for the critical signed-in document-to-answer flow.
 - [ ] Verify structured error and logging behavior.
+- [ ] Test that a controlled ingestion failure can be diagnosed through correlated logs and traces without exposing document content or credentials.
 
 Gate: expected failures reach explicit recoverable or failed states without hanging or silently losing work.
 
@@ -181,6 +187,11 @@ Target: Day 12
 - [ ] Configure internal networking, volumes, runtime secrets, health checks, graceful shutdown, and restart policies.
 - [ ] Configure DNS and HTTPS.
 - [ ] Verify backup and restore steps for durable state.
+- [ ] Choose and configure centralized log, metric, and trace collection/storage within the VPS budget; agree retention, access, and sampling before choosing the backend.
+- [ ] Add an operational dashboard for queue backlog, consumers, ingestion failures/durations, and documents stuck in queued or processing.
+- [ ] Add and exercise actionable alerts, including pending work with no consumer. Document the investigation and recovery steps.
+
+Operational logging, metrics, and tracing are required for V1 deployment. Tool selection is deferred until the ingestion flow works. RabbitMQ's management UI is not completed-job history; PostgreSQL remains authoritative. Durable ingestion-attempt history is a separate decision, not a substitute for telemetry.
 
 Gate: the application is reachable through HTTPS and only Nginx exposes public HTTP ports.
 

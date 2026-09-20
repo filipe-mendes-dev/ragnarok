@@ -2,8 +2,8 @@
 
 The worker consumes RabbitMQ messages and ingests queued text documents. It loads
 an owned revision from PostgreSQL, splits it with LangChain, and saves its chunks.
-PDF extraction and automatic publication from Next.js are not implemented yet.
-This is the first text-worker step, not the completed Phase 4 pipeline.
+Next.js publishes new text submissions automatically. PDF extraction and PDF
+publication are not implemented yet. Phase 4 failure recovery remains unfinished.
 
 ## Install and run
 
@@ -43,9 +43,17 @@ its `__main__.py`. The worker stays running until interrupted or an unrecovered
 error occurs. No HTTP server is involved. It declares the durable queues
 `ragnarok.ingestion.v1` and `ragnarok.ingestion.rejected.v1`.
 
-Starting the worker does not enqueue existing documents. Next.js publication is
-the next step. The broker integration test seeds a queued text document and sends
-a real message, so we can verify this worker before connecting uploads.
+Starting the worker does not enqueue existing documents. With the worker running,
+start Next.js with `npm run dev` from the repository root and submit a new text
+document. Refresh Documents to see completed status. Existing uploaded documents
+need a later backfill operation. The TypeScript broker integration test starts the
+real Python worker and checks that text submission produces persisted chunks.
+
+Set `INGESTION_QUEUE_NAME` and `INGESTION_REJECTED_QUEUE_NAME` in the root `.env`,
+using the values in `.env.example`. Next.js and the uv command above load that file.
+Both names are required and must be distinct and nonblank. On separate machines,
+deployment must inject the same values into both applications. Renaming a queue
+does not move existing messages. No dependency installation is needed for this change.
 
 ## Follow one message through the files
 
