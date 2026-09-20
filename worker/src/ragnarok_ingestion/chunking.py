@@ -30,6 +30,7 @@ class TextChunk:
 
     ordinal: int
     text: str
+    page_number: int | None = None
 
 
 def chunk_text(
