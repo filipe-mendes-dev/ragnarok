@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 
 import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractQueue
@@ -11,19 +12,21 @@ from pydantic import ValidationError
 from ragnarok_ingestion.ingestion_input import parse_ingestion_job_input
 from ragnarok_ingestion.ingestion_service import DocumentBusyError, ingest_text_document
 
-QUEUE_NAME = "ragnarok.ingestion.v1"
-REJECTED_QUEUE_NAME = "ragnarok.ingestion.rejected.v1"
 logger = logging.getLogger(__name__)
 
 
 async def declare_ingestion_queue(channel: AbstractChannel) -> AbstractQueue:
-    await channel.declare_queue(REJECTED_QUEUE_NAME, durable=True, timeout=10)
+    queue_name = os.environ.get("INGESTION_QUEUE_NAME", "")
+    rejected_queue_name = os.environ.get("INGESTION_REJECTED_QUEUE_NAME", "")
+    if not queue_name.strip() or not rejected_queue_name.strip() or queue_name == rejected_queue_name:
+        raise ValueError("Set distinct, nonblank INGESTION_QUEUE_NAME and INGESTION_REJECTED_QUEUE_NAME")
+    await channel.declare_queue(rejected_queue_name, durable=True, timeout=10)
     return await channel.declare_queue(
-        QUEUE_NAME,
+        queue_name,
         durable=True,
         arguments={
             "x-dead-letter-exchange": "",
-            "x-dead-letter-routing-key": REJECTED_QUEUE_NAME,
+            "x-dead-letter-routing-key": rejected_queue_name,
         },
         timeout=10,
     )

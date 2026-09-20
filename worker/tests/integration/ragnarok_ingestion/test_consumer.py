@@ -5,12 +5,12 @@ from contextlib import suppress
 import json
 from uuid import uuid4
 
+import pytest
 import aio_pika
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
 from ragnarok_ingestion.consumer import (
-    REJECTED_QUEUE_NAME,
     consume_ingestion,
     declare_ingestion_queue,
 )
@@ -19,7 +19,10 @@ from ragnarok_ingestion.database import connect_database
 
 def test_worker_persists_real_delivery_and_rejects_invalid_json(
     migrated_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("INGESTION_QUEUE_NAME", "test.ingestion")
+    monkeypatch.setenv("INGESTION_REJECTED_QUEUE_NAME", "test.rejected")
     owner_id = str(uuid4())
     document_id = uuid4()
     with connect_database(migrated_database_url) as database:
@@ -62,7 +65,7 @@ def test_worker_persists_real_delivery_and_rejects_invalid_json(
                             )
                         worker = asyncio.create_task(consume_ingestion(url, migrated_database_url))
                         try:
-                            rejected_queue = await channel.get_queue(REJECTED_QUEUE_NAME)
+                            rejected_queue = await channel.get_queue("test.rejected")
                             async with asyncio.timeout(20):
                                 async with rejected_queue.iterator() as rejected:
                                     async for message in rejected:
