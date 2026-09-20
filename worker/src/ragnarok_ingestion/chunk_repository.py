@@ -28,12 +28,12 @@ def replace_document_chunks(
         cursor.executemany(
             """
             INSERT INTO document_chunk
-                (document_id, revision, ordinal, text, chunk_config_id)
-            SELECT id, revision, %s, %s, %s FROM document
+                (document_id, revision, ordinal, text, page_number, chunk_config_id)
+            SELECT id, revision, %s, %s, %s, %s FROM document
             WHERE id = %s AND user_id = %s AND revision = %s
             """,
             [
-                (chunk.ordinal, chunk.text, config_id, document_id, user_id, revision)
+                (chunk.ordinal, chunk.text, chunk.page_number, config_id, document_id, user_id, revision)
                 for chunk in chunks
             ],
         )

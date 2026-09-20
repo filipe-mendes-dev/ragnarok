@@ -10,7 +10,7 @@ from psycopg import OperationalError
 from pydantic import ValidationError
 
 from ragnarok_ingestion.ingestion_input import parse_ingestion_job_input
-from ragnarok_ingestion.ingestion_service import DocumentBusyError, ingest_text_document
+from ragnarok_ingestion.ingestion_service import DocumentBusyError, ingest_document
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ async def consume_ingestion(rabbitmq_url: str, database_url: str) -> None:
                     try:
                         # Psycopg and the splitter are synchronous. A thread keeps
                         # their work from blocking RabbitMQ heartbeats in this loop.
-                        outcome = await asyncio.to_thread(ingest_text_document, database_url, job)
+                        outcome = await asyncio.to_thread(ingest_document, database_url, job)
                         break
                     except (OperationalError, DocumentBusyError):
                         if attempt == 2:

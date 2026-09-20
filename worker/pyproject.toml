@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "aio-pika>=9.5,<10",
+    "boto3>=1.43.98",
     "langchain-text-splitters==1.1.2",
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.13,<3",

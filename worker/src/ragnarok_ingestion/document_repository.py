@@ -1,4 +1,4 @@
-"""Document reads required by text ingestion."""
+"""Document reads and status updates required by ingestion."""
 
 from dataclasses import dataclass
 from uuid import UUID
@@ -21,37 +21,16 @@ def try_lock_document(
 
 
 @dataclass(frozen=True)
-class TextDocumentSource:
+class DocumentSource:
     id: UUID
     revision: int
-    source_text: str
+    source_type: str
+    source_text: str | None
+    storage_key: str | None
     status: str
 
 
-def find_text_source_for_user(
-    connection: Connection[tuple[object, ...]],
-    user_id: str,
-    document_id: UUID,
-    revision: int,
-) -> TextDocumentSource | None:
-    """Return only the owner's matching text revision, or None.
-
-    This read does not claim processing ownership or change document status.
-    """
-    with connection.cursor(row_factory=class_row(TextDocumentSource)) as cursor:
-        cursor.execute(
-            """
-            SELECT id, revision, source_text, status
-            FROM document
-            WHERE id = %s AND user_id = %s AND revision = %s
-              AND source_type = 'text' AND source_text IS NOT NULL
-            """,
-            (document_id, user_id, revision),
-        )
-        return cursor.fetchone()
-
-
-def update_text_status_for_user(
+def update_status_for_user(
     connection: Connection[tuple[object, ...]],
     user_id: str,
     document_id: UUID,
@@ -59,21 +38,21 @@ def update_text_status_for_user(
     expected_statuses: list[str],
     status: str,
     error: str | None = None,
-) -> TextDocumentSource | None:
+) -> DocumentSource | None:
     """The caller selects permitted transitions and owns the transaction.
 
     UPDATE locks the row until commit, so a source edit cannot interleave with
     chunk replacement in the same transaction.
     """
-    with connection.cursor(row_factory=class_row(TextDocumentSource)) as cursor:
+    with connection.cursor(row_factory=class_row(DocumentSource)) as cursor:
         cursor.execute(
             """
             UPDATE document
             SET status = %s, processing_error = %s, updated_at = now()
             WHERE id = %s AND user_id = %s AND revision = %s
-              AND source_type = 'text' AND source_text IS NOT NULL
+              AND source_type IN ('text', 'pdf')
               AND status::text = ANY(%s)
-            RETURNING id, revision, source_text, status
+            RETURNING id, revision, source_type, source_text, storage_key, status
             """,
             (status, error, document_id, user_id, revision, expected_statuses),
         )
