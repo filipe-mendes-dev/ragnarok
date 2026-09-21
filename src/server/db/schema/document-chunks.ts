@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { check, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, integer, pgTable, text, timestamp, uniqueIndex, uuid, vector } from "drizzle-orm/pg-core";
 
 import { document } from "@/server/db/schema/documents";
 import { chunkConfig } from "@/server/db/schema/chunk-configs";
@@ -15,6 +15,9 @@ export const documentChunk = pgTable(
         ordinal: integer("ordinal").notNull(),
         text: text("text").notNull(),
         pageNumber: integer("page_number"),
+        embedding: vector("embedding", { dimensions: 384 }),
+        embeddingModel: text("embedding_model"),
+        embeddingRevision: text("embedding_revision"),
         chunkConfigId: uuid("chunk_config_id")
             .notNull()
             .references(() => chunkConfig.id, { onDelete: "restrict" }),
@@ -32,6 +35,11 @@ export const documentChunk = pgTable(
         check("document_chunk_ordinal_nonnegative", sql`${table.ordinal} >= 0`),
         check("document_chunk_text_not_blank", sql`${table.text} ~ '[^[:space:]]'`),
         check("document_chunk_page_number_positive", sql`${table.pageNumber} > 0`),
+        check("document_chunk_embedding_complete", sql`
+            (${table.embedding} IS NULL AND ${table.embeddingModel} IS NULL AND ${table.embeddingRevision} IS NULL)
+            OR (${table.embedding} IS NOT NULL AND ${table.embeddingModel} IS NOT NULL AND ${table.embeddingRevision} IS NOT NULL
+                AND ${table.embeddingModel} ~ '[^[:space:]]' AND ${table.embeddingRevision} ~ '[^[:space:]]')
+        `),
     ],
 );
 

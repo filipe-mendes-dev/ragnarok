@@ -53,6 +53,11 @@ const invalidCases: InvalidChunkCase[] = [
     { description: "negative ordinal", changes: { ordinal: -1 }, constraint: "document_chunk_ordinal_nonnegative" },
     { description: "whitespace-only text", changes: { text: " \t\n" }, constraint: "document_chunk_text_not_blank" },
     { description: "nonpositive page", changes: { pageNumber: 0 }, constraint: "document_chunk_page_number_positive" },
+    { description: "vector without model identity", changes: { embedding: Array<number>(384).fill(1) }, constraint: "document_chunk_embedding_complete" },
+    { description: "model identity without vector", changes: { embeddingModel: "model", embeddingRevision: "revision" }, constraint: "document_chunk_embedding_complete" },
+    { description: "vector without revision", changes: { embedding: Array<number>(384).fill(1), embeddingModel: "model" }, constraint: "document_chunk_embedding_complete" },
+    { description: "blank embedding model", changes: { embedding: Array<number>(384).fill(1), embeddingModel: " ", embeddingRevision: "revision" }, constraint: "document_chunk_embedding_complete" },
+    { description: "blank embedding revision", changes: { embedding: Array<number>(384).fill(1), embeddingModel: "model", embeddingRevision: " " }, constraint: "document_chunk_embedding_complete" },
 ];
 
 describe("document chunk constraints", () => {
@@ -87,6 +92,30 @@ describe("document chunk constraints", () => {
         await expect(database.insert(documentChunk).values(input)).rejects.toMatchObject({
             cause: { code: "23505", constraint: "document_chunk_document_revision_ordinal_idx" },
         });
+    });
+
+    it("persists a 384-dimensional vector with its model identity", async () => {
+        const input = {
+            ...createChunkInput(await seedOwnedDocument(), configId),
+            embedding: [1, ...Array<number>(383).fill(0)],
+            embeddingModel: "BAAI/bge-small-en-v1.5",
+            embeddingRevision: "test-revision",
+        };
+        await database.insert(documentChunk).values(input);
+
+        const rows = await database.select().from(documentChunk)
+            .where(eq(documentChunk.documentId, input.documentId));
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject(input);
+    });
+
+    it("rejects a vector with the wrong dimensions", async () => {
+        const input = {
+            ...createChunkInput(await seedOwnedDocument(), configId),
+            embedding: [1, 0], embeddingModel: "model", embeddingRevision: "revision",
+        };
+        await expect(database.insert(documentChunk).values(input))
+            .rejects.toMatchObject({ cause: { code: "22000" } });
     });
 
     it("keeps old chunks when the document revision advances", async () => {
