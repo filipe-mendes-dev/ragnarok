@@ -44,7 +44,7 @@ This table includes planned retrieval, deployment, and CI components. See the
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
 | CI/CD | GitHub Actions | Lint, type checking, tests, build, and later deployment |
 
-Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. AI providers and the production object-storage provider remain implementation decisions.
+Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. Ingestion uses local BGE-small English embeddings through FastEmbed/ONNX Runtime. Generation and production object-storage providers remain implementation decisions.
 
 ## Repository structure
 
@@ -149,7 +149,7 @@ It does not import database clients, Node-only APIs, secrets, RabbitMQ, or provi
 
 ### `worker/src/ragnarok_ingestion`
 
-Contains Python ingestion behavior. The entry point configures logging and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download, extraction, and chunking run sequentially in one bounded child process.
+Contains Python ingestion behavior. The entry point configures logging, loads one resident embedding model, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text using the model tokenizer and generates embeddings before persistence.
 
 ## Client and server dependency graphs
 
@@ -289,11 +289,44 @@ Each `document_chunk` row stores:
 - `chunk_config_id`: required reference to the configuration that produced this chunk.
 - `created_at`: insertion timestamp.
 
-The unique index on `(document_id, revision, ordinal)` prevents duplicate positions and supports document/revision lookups. Settings live in `chunk_config`, with a UUID, `chunking_method`, `chunk_size`, `chunk_overlap`, and creation timestamp. A unique index on method, size, and overlap allows reuse across documents. Sizes use Unicode code points, not model tokens. Referenced configurations cannot be deleted. Configurations must be treated as immutable by application services: new settings or method versions get a different row. The schema does not prevent direct SQL updates to a configuration.
+The unique index on `(document_id, revision, ordinal)` prevents duplicate positions and supports document/revision lookups. Settings live in `chunk_config`, with a UUID, `chunking_method`, `chunk_size`, `chunk_overlap`, and creation timestamp. A unique index on method, size, and overlap allows reuse across documents. The method identifies the size unit: legacy configurations count Unicode code points; BGE configurations count model tokens. Referenced configurations cannot be deleted. Configurations must be treated as immutable by application services: new settings or method versions get a different row. The schema does not prevent direct SQL updates to a configuration.
 
 The ingestion service must check text length against the selected configuration and use one configuration within a replacement set, check the current revision, and replace chunks plus completion status atomically. A PostgreSQL CHECK cannot read the referenced configuration, so text length is no longer checked against size on the chunk row. Constraints alone do not enforce those workflow rules. The schema allows multiple revisions to coexist; the replacement workflow determines which set remains active.
 
-No embeddings, lexical-search fields, or source offsets are added in this step. Drizzle owns the migration; Python inserts into PostgreSQL through Psycopg using the committed schema.
+The original Phase 4 schema contained no embeddings. Phase 5 migration
+`0005_groovy_swordsman.sql` adds `embedding vector(384)`, `embedding_model`, and
+`embedding_revision`. A check constraint requires either all three fields or none,
+preserving legacy rows without inventing vectors. New ingestion always writes all
+three. Existing documents are not automatically requeued. Future retrieval must
+filter out null vectors and require compatible model/revision metadata as well as
+ownership and completed status. Drizzle owns migrations; Python writes through
+Psycopg using parameterized vector casts. No vector index, lexical fields, or
+retrieval endpoint is added in this step.
+
+## Local embedding ingestion
+
+The worker provisions Qdrant's quantized ONNX artifact for `BAAI/bge-small-en-v1.5`
+at revision `52398278842ec682c6f32300af41344b1c0b0bb2`. The loader reads a local
+folder and never downloads at runtime. `EMBEDDING_MODEL_DIR` optionally overrides
+`worker/models/bge-small-en-v1.5`; it must contain this exact artifact. File hashes
+are not checked at load time. The model is English-only, produces 384-dimensional
+normalized vectors, and runs with two inference threads and batches of eight.
+
+Production chunking now uses 384 content tokens with 48 target overlap, identified
+by `recursive-bge-small-en-v1.5-token-v1`. Older `recursive-character-v1` settings
+remain character counts. The tokenizer checks complete inputs against 512 tokens;
+oversized input is rejected rather than silently truncated. PDF pages are chunked
+separately to preserve citation page numbers. The character-based chunking example
+remains available, but production ingestion uses the token-aware wrapper.
+
+Parsing, chunking, embedding, and persistence remain separate functions within one
+job. No intermediate checkpoints are persisted. Computation happens outside the
+final transaction; the existing owned-revision update, chunk/vector replacement,
+and completion commit atomically. A concurrent edit discards stale results. Safe
+embedding-input rejections mark the matching revision failed; unexpected model
+errors retain the existing unacknowledged-message behavior. Old chunks and vectors
+survive failed preparation or a rolled-back replacement. Existing retry/shutdown
+limitations still apply. Query-time embedding access from TypeScript remains future work.
 
 ## Python worker integration
 
@@ -307,7 +340,7 @@ The recommended initial database client is Psycopg 3 with parameterized SQL in f
 
 Python services own transaction boundaries and pass a connection to repositories. The ingestion service opens a dedicated PostgreSQL connection and acquires a session advisory lock derived from the document ID. This serializes cooperating ingestion workers for the same document. It does not prevent a web edit; owner and revision predicates reject stale results. The connection closes after each job, releasing its advisory lock. Do not put this connection behind transaction-mode pooling.
 
-A short transaction transitions queued or interrupted processing work to processing. Chunking runs outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks. Both writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
+A short transaction transitions queued or interrupted processing work to processing. Chunking and embedding run outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks and vectors. All writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks and vectors survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
 
 The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Queued or processing text and PDF documents are eligible. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors, failed PDF downloads, and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
 
@@ -343,7 +376,7 @@ Internet
 
 RabbitMQ
 -> one Python RabbitMQ worker container
--> PostgreSQL, object storage, and embedding provider
+-> PostgreSQL, object storage, and a resident local embedding model
 ```
 
 Production packaging will use separate Node.js web and Python worker runtime targets. Two web containers demonstrate stateless application replication on one host, not machine-level high availability.
@@ -394,8 +427,9 @@ sequenceDiagram
     alt PDF source
         S->>S: Child downloads S3 object and extracts layout text
     end
-    S->>S: Split source with LangChain
-    S->>DB: Commit replacement chunks and completed together
+    S->>S: Split text/pages using BGE token counts
+    S->>S: Embed chunks with the resident CPU model
+    S->>DB: Commit replacement chunks, vectors, and completed together
     S->>DB: Close connection and release lock
     S-->>W: Outcome
     W->>Q: Acknowledge delivery
@@ -469,14 +503,16 @@ without extractable text. Strict parsing intentionally rejects some recoverable
 PDF defects rather than silently repairing them. Known PDF read errors become safe
 document errors; unexpected exceptions still propagate.
 
-The ingestion service calls `pdf_processing.process_pdf(storage_key, settings)`
+The ingestion service calls `pdf_processing.process_pdf(storage_key)`
 after authorizing and claiming the owned document revision. It starts one child
-process per PDF. That child downloads from S3, extracts text, and chunks it in
-sequence, returning validated JSON chunks. Original PDF bytes stay in the child.
+process per PDF. That child downloads from S3 and extracts text,
+returning validated JSON pages. Original PDF bytes stay in the child.
 The parent retains all database access, revision checks, and acknowledgement work.
 
-One 30-second deadline covers child startup, downloading, extraction, chunking,
-and result transfer. This replaces the former separate 30-second deadlines.
+One 30-second deadline covers child startup, downloading, extraction,
+and result transfer. Token-aware chunking and embedding now run in the parent and
+are not covered by this PDF deadline; source-size limits and small inference batches
+bound the input. No whole-ingestion execution deadline is implemented yet.
 `subprocess.run` kills and waits for an overdue child; the service records a safe
 processing failure for the matching revision. Other download infrastructure failures
 still receive the consumer's existing per-delivery retries. Expected source/parser
@@ -484,7 +520,7 @@ errors use safe JSON messages; raw child stderr is not forwarded to documents.
 
 The S3 client still limits bytes, uses five-second connect and ten-second socket
 read timeouts, and allows two SDK attempts within the overall deadline. Helpers
-`load_pdf_from_s3` and `chunk_pdf` are synchronous and never launch children.
+`load_pdf_from_s3` and `extract_pdf_pages` are synchronous and never launch children.
 The single child adds startup overhead and is not a memory sandbox. Deployment
 memory limits remain necessary. Chunk/page persistence and completion remain atomic.
 
@@ -502,8 +538,8 @@ Detailed deferred work and completion conditions are tracked in [todo.md](todo.m
 
 ## Delivery sequencing
 
-The working text/PDF ingestion flow is sufficient to begin embeddings, retrieval,
-and grounded answers. Publication recovery, durable retry limits, retry UI, shutdown
+The text/PDF ingestion flow now persists local embeddings. Semantic retrieval
+and grounded answers are next. Publication recovery, durable retry limits, retry UI, shutdown
 supervision, and broader failure testing are deferred until that product path works,
 and remain required reliability follow-ups before public deployment. Preserve the
 existing ownership, revision, atomic-write, and execution-limit protections. Continue
@@ -514,7 +550,7 @@ focused checks rather than repeatedly running every suite for small changes.
 Python uses the standard `logging` module with timestamps, severity, module names,
 and key/value events on stderr. Consumer events record document/revision, attempt,
 redelivery, retries, acknowledgement, outcome, and total duration. Service events
-identify database connection, claim, chunking, and persistence stages. Exceptions
+identify database connection, claim, chunking, embedding, and persistence stages. Exceptions
 include their class and the last six file/function/line locations, plus PostgreSQL
 SQLSTATE, storage error code, or a recognized missing environment key when available.
 PDF children return the same safe diagnostics to the parent on unexpected failures.

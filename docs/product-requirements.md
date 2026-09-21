@@ -237,7 +237,7 @@ extracted Unicode characters, with a 30-second PDF processing deadline.
 
 ## Open product decisions
 
-- Embedding and generation providers and models
+- Generation provider/model; the initial embedding implementation uses local BGE-small English
 - Production object-storage provider
 - Whether reranking fits before the deployment milestone
 - Whether the public deployment offers self-service accounts or a controlled demo account
