@@ -1,5 +1,5 @@
 import { connect } from "amqplib";
-import { getIngestionQueueNames } from "@/server/config/env";
+import { getIngestionQueueNames, getRabbitmqUrl } from "@/server/config/env";
 
 import {
     parseIngestionJobInput,
@@ -22,10 +22,10 @@ export class IngestionPublishError extends Error {
 
 /** Publishes a job; does not change document state or wait for ingestion. */
 export async function publishIngestionJob(
-    rabbitmqUrl: string,
     input: IngestionJobInput,
 ): Promise<void> {
     const job = parseIngestionJobInput(input);
+    const rabbitmqUrl = getRabbitmqUrl();
     const queueNames = getIngestionQueueNames();
     const controller = new AbortController();
     const failure = Promise.withResolvers<never>();

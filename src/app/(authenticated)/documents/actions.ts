@@ -125,6 +125,12 @@ export async function completePdfUploadAction(
             succeeded: true,
         };
     } catch (error: unknown) {
+        if (error instanceof IngestionPublishError) {
+            return {
+                errorMessage: 'Your PDF was saved, but queue delivery could not be confirmed. Check Documents before uploading again. Processing may still start.',
+                succeeded: false,
+            };
+        }
         if (
             error instanceof ZodError ||
             error instanceof DocumentUploadError

@@ -1,17 +1,12 @@
 import type { DocumentRow } from "@/server/db/schema/documents";
 import type { CreateTextDocumentInput } from "@/server/modules/documents/document-input";
 import type { DocumentRepository } from "@/server/modules/documents/document-repository";
-import { getRabbitmqUrl } from "@/server/config/env";
 import type { IngestionJobInput } from "@/server/modules/ingestion/ingestion-input";
 import { publishIngestionJob } from "@/server/queue/rabbitmq-ingestion-publisher";
 
-async function publishJob(job: IngestionJobInput): Promise<void> {
-    await publishIngestionJob(getRabbitmqUrl(), job);
-}
-
 export function createDocumentService(
     repository: DocumentRepository,
-    publish: (job: IngestionJobInput) => Promise<void> = publishJob,
+    publish: (job: IngestionJobInput) => Promise<void> = publishIngestionJob,
 ) {
     async function getDocument(
         userId: string,

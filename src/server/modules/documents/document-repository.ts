@@ -72,7 +72,6 @@ export function createDocumentRepository(databaseClient: Database) {
                 eq(document.id, documentId),
                 eq(document.userId, userId),
                 eq(document.revision, revision),
-                eq(document.sourceType, "text"),
                 eq(document.status, "uploaded"),
             ))
             .returning();
