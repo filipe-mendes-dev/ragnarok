@@ -1,9 +1,9 @@
 # Python ingestion worker
 
-The worker consumes RabbitMQ messages and ingests queued text documents. It loads
+The worker consumes RabbitMQ messages and ingests queued text and PDF documents. It loads
 an owned revision from PostgreSQL, splits it with LangChain, and saves its chunks.
-Next.js publishes new text submissions automatically. PDF extraction and PDF
-publication are not implemented yet. Phase 4 failure recovery remains unfinished.
+Next.js publishes new text submissions and verified PDF upload completions.
+Phase 4 failure recovery remains unfinished.
 
 ## Install and run
 
@@ -90,7 +90,7 @@ does not move existing messages. No dependency installation is needed for this c
 The consumer uses `async def` because broker operations can wait without blocking
 other connection work. `await` suspends that coroutine until an operation finishes.
 `asyncio.run` starts Python's event loop, which manages those waits.
-`await asyncio.to_thread(ingest_text_document, ...)` runs our synchronous database
+`await asyncio.to_thread(ingest_document, ...)` runs our synchronous database
 and chunking function on another thread. This lets the event loop handle RabbitMQ
 heartbeats. It does not make several documents run at once; the consumer still
 awaits each result before receiving the next job.
@@ -117,10 +117,10 @@ ignored on redelivery, preserving the existing chunk IDs.
 Queued and processing text documents are eligible. Processing can be reclaimed
 once an interrupted worker's advisory lock is gone. Uploaded documents, PDFs,
 completed/failed documents, missing documents, and unmatched ownership/revisions
-are currently ignored. Do not send PDF jobs to this text-only worker yet.
+are ignored. PDF jobs load the authorized storage key from S3.
 
 Invalid JSON goes to the rejected queue without printing its content. Temporary
-Psycopg operational errors and busy document locks get three attempts per delivery,
+Psycopg operational errors, PDF download failures, and busy document locks get three attempts per delivery,
 with one- and two-second delays. If those fail, the process exits without acknowledging.
 An unexpected processing exception also stops the process. Restart allows RabbitMQ
 to redeliver unacknowledged work. Oversized or blank text receives a fixed safe
@@ -131,13 +131,11 @@ Still pending before Phase 4 is complete:
 - Durable attempt counts and terminal handling of unexpected processing failures.
 - Recovery of a saved document whose message was never published.
 - Production supervision and graceful drain behavior on shutdown.
-- Bounded PDF loading/extraction and its failure policy.
 - Cross-runtime contract fixtures and explicit broker/crash fault tests.
 
-The current attempt limit resets after restart. The thread wrapper is not a hard
-execution timeout. Do not describe either as full crash recovery or bounded PDF
-execution. Messages must be persistent and publisher-confirmed when Next.js
-publication is implemented; durable queues alone do not provide that guarantee.
+The current attempt limit resets after restart. PDF downloading, extraction, and chunking share
+one subprocess deadline, but this does not provide full crash recovery.
+Next.js publishes persistent messages and waits for publisher confirms.
 
 ## Tests and the meaning of yield
 
@@ -204,3 +202,22 @@ Start with primary/foreign keys and unique constraints, then transactions and
 commit/rollback. Follow with connections versus cursors, row locks and concurrent
 updates, and finally indexes and query plans. The service's final transaction is a
 concrete exercise in why several successful individual queries are not sufficient.
+
+## PDF service integration
+
+`ingest_document(database_url, job)` selects the owned source in PostgreSQL and calls
+`process_pdf(storage_key, settings)` for PDFs. One child downloads, extracts, and chunks
+in sequence. `load_pdf_from_s3` and `chunk_pdf` are ordinary synchronous helpers.
+Only the storage key/settings travel to the child; PDF bytes stay there. JSON chunks
+return to the parent, where Pydantic validates them before atomic persistence.
+
+One 30-second deadline covers the complete child operation, replacing two separate
+30-second stage deadlines. An overdue child is killed and reaped, and the matching
+revision becomes failed. Download infrastructure errors retain per-delivery retries.
+Expected source/parser errors use safe JSON messages, not raw child stderr. The parent
+keeps its database connection, revision checks, RabbitMQ heartbeats, and acknowledgement
+responsibility. The child has no database work. This is not a memory sandbox.
+
+Run local infrastructure, Next.js, and the worker with the commands above, upload a
+PDF, and refresh Documents. Existing uploaded documents still need completion/recovery;
+worker startup does not backfill them. No dependency or migration changes are needed.

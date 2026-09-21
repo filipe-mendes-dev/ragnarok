@@ -253,7 +253,7 @@ PDF uploads use a two-phase object-storage workflow. The server authenticates th
 
 RabbitMQ replaces the earlier BullMQ/Redis plan. It connects the TypeScript publisher and the planned Python worker through established messaging clients. Learning message delivery and acknowledgements is an explicit project goal. The trade-off is more application work for retry delays, attempt limits, and failure handling than BullMQ supplies through job options.
 
-RabbitMQ does not use Redis. Redis is disabled by default behind the `legacy-redis` Compose profile, and the web environment no longer requires `REDIS_URL`. Its volume is retained. An existing Redis container must be stopped explicitly; changing profiles does not stop a running container. RabbitMQ is configured in `compose.dev.yml`. The Python text consumer is implemented; automatic publication from Next.js remains pending.
+RabbitMQ does not use Redis. Redis is disabled by default behind the `legacy-redis` Compose profile, and the web environment no longer requires `REDIS_URL`. Its volume is retained. An existing Redis container must be stopped explicitly; changing profiles does not stop a running container. RabbitMQ is configured in `compose.dev.yml`. Next.js publishes text submissions and verified PDF upload completions to the Python consumer.
 
 Start with one ingestion queue and one Python worker process. The worker delegates to an ingestion service and initially processes one document at a time. A single message covers loading, extraction, chunking, and persistence. Retries may repeat computation; duplicate persisted chunks remain forbidden. PostgreSQL stores document status and chunks. RabbitMQ carries a versioned message containing `version`, `documentId`, `revision`, and `userId`; it does not carry source contents or storage credentials. The producer supplies the authenticated owner, and the service checks ownership and revision in its database query before reading a source.
 
@@ -266,7 +266,7 @@ Implement in small steps:
 3. Implement source loading, PDF extraction, and the ingestion service with focused service tests.
 4. Add RabbitMQ configuration and implement publication, a thin consumer, bounded retries, and recovery. Test actual broker delivery and worker crashes with Testcontainers.
 
-Start with paragraph-aware splitting and a maximum size. Chunks can have different sizes. The initial Python chunker uses 1,000 Unicode code points and a target overlap of 150, both adjustable. These are trial values pending sample review and later retrieval evaluation. Its initial output contains ordinal and text; document revision, page locations, and persistence metadata follow in later steps. Store one active chunk set per document, including source revision, order, text, source location where available, and enough method/version/settings metadata to identify how it was produced. Later customization can change settings or replace the method; simultaneous chunk sets are deferred.
+Start with paragraph-aware splitting and a maximum size. Chunks can have different sizes. The initial Python chunker uses 1,000 Unicode code points and a target overlap of 150, both adjustable. These are trial values pending sample review and later retrieval evaluation. Chunks carry ordinal, text, and optional PDF page number; persistence records the source revision and chunk configuration. Store one active chunk set per document, including source revision, order, text, source location where available, and enough method/version/settings metadata to identify how it was produced. Later customization can change settings or replace the method; simultaneous chunk sets are deferred.
 
 The Python chunker uses the pinned `langchain-text-splitters` package and its `RecursiveCharacterTextSplitter`. This local operation needs no provider credentials. Ordinary functions remain suitable for this fixed ingestion workflow. LangGraph and agents are outside V1. After ordinary RAG works, a separate learning exercise can introduce tool calling, then conditional workflows and persisted execution. Python is an explicit learning choice for this milestone. It adds dependency management, message-contract validation in both languages, and separate persistence code. It does not add a Python HTTP API. See `worker/README.md` for setup and current limitations.
 
@@ -294,7 +294,7 @@ No embeddings, lexical-search fields, or source offsets are added in this step. 
 
 ## Python worker integration plan
 
-The Python package contains text chunking, PostgreSQL repositories, a text ingestion service, Pydantic message validation, and an aio-pika consumer. The TypeScript document service now calls `publishIngestionJob` after saving a text document and committing its queued state. PDF uploads do not publish until extraction is implemented.
+The Python package contains text chunking, PostgreSQL repositories, a text ingestion service, Pydantic message validation, and an aio-pika consumer. The TypeScript document service now calls `publishIngestionJob` after saving a text document and committing its queued state. Verified PDF upload completion now queues and publishes the owned revision too.
 
 Next.js authenticates the user and saves the source through its existing TypeScript services and Drizzle repositories. It publishes a versioned JSON message through RabbitMQ. A separately running Python consumer validates that message and delegates to the Python ingestion service. The service queries PostgreSQL with owner, document, and revision filters before accessing the source, then calls extraction and chunking. The web application continues to read status from PostgreSQL through Drizzle; no callback to Next.js is required for completion.
 
@@ -306,7 +306,7 @@ Python services own transaction boundaries and pass a connection to repositories
 
 A short transaction transitions queued or interrupted processing work to processing. Chunking runs outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks. Both writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
 
-The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Only queued or processing text documents are eligible in this step. Do not publish PDF jobs until extraction is implemented. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
+The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Queued or processing text and PDF documents are eligible. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors, failed PDF downloads, and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
 
 Using Python means SQL queries do not inherit Drizzle's compile-time schema checks. Typed row mapping, shared contract fixtures, and database integration tests must catch drift. Implement Python ingestion operations only; do not copy the web application's upload and listing services.
 
@@ -409,7 +409,7 @@ pretend that the document completed. Persistent failure handling is still pendin
 
 ## TypeScript publication boundary
 
-`publishIngestionJob(rabbitmqUrl, input)` validates the existing job input and opens
+`publishIngestionJob(input)` validates the existing job input and opens
 an amqplib confirm channel. It declares the same durable queues and dead-letter
 routing as Python, publishes persistent JSON with mandatory routing, and waits for
 broker confirmation. A confirmation means RabbitMQ accepted the publication; it
@@ -437,8 +437,8 @@ deferred. A failed broker confirmation can mean delivery is uncertain; the actio
 the user the document was saved and does not reset state or delete the source. No retry
 UI exists yet. Reopening the list shows persisted status; refresh to see worker updates.
 
-The adapter accepts a URL explicitly. The default service publisher validates
-RABBITMQ_URL only when publishing; unrelated reads do not require it.
+The publisher reads and validates RABBITMQ_URL and queue names internally when
+publishing; unrelated reads do not require them. Services supply only the job.
 
 Queue names are required deployment configuration: `INGESTION_QUEUE_NAME` and
 `INGESTION_REJECTED_QUEUE_NAME`. Both runtimes reject missing, blank, or identical
@@ -447,6 +447,46 @@ must supply matching values to both processes, including when hosted separately.
 No cross-runtime file import or fallback queue names are used. Existing development
 Compose runs infrastructure only, so these variables belong to the host applications,
 not the RabbitMQ container. Both clients declare the queue durability and routing.
+
+## PDF extraction implementation status
+
+`worker/src/ragnarok_ingestion/pdf_extraction.py` prepares a standalone pypdf
+extractor, now verified against synthetic PDF fixtures with pypdf 6.19.0. It accepts
+bytes and returns text with original one-based page numbers, skipping empty pages.
+Initial limits are 100 pages and 100,000 extracted Unicode characters, counted
+before whitespace normalization. It rejects encrypted documents and documents
+without extractable text. Strict parsing intentionally rejects some recoverable
+PDF defects rather than silently repairing them. Known PDF read errors become safe
+document errors; unexpected exceptions still propagate.
+
+The ingestion service calls `pdf_processing.process_pdf(storage_key, settings)`
+after authorizing and claiming the owned document revision. It starts one child
+process per PDF. That child downloads from S3, extracts text, and chunks it in
+sequence, returning validated JSON chunks. Original PDF bytes stay in the child.
+The parent retains all database access, revision checks, and acknowledgement work.
+
+One 30-second deadline covers child startup, downloading, extraction, chunking,
+and result transfer. This replaces the former separate 30-second deadlines.
+`subprocess.run` kills and waits for an overdue child; the service records a safe
+processing failure for the matching revision. Other download infrastructure failures
+still receive the consumer's existing per-delivery retries. Expected source/parser
+errors use safe JSON messages; raw child stderr is not forwarded to documents.
+
+The S3 client still limits bytes, uses five-second connect and ten-second socket
+read timeouts, and allows two SDK attempts within the overall deadline. Helpers
+`load_pdf_from_s3` and `chunk_pdf` are synchronous and never launch children.
+The single child adds startup overhead and is not a memory sandbox. Deployment
+memory limits remain necessary. Chunk/page persistence and completion remain atomic.
+
+Verified upload completion commits uploaded, then conditionally queued before
+publication. Concurrent/repeated completion does not republish or reset documents
+already queued, processing, completed, or failed. An unconfirmed publication keeps
+the source and state intact and returns a safe action error. Recovery of that
+publication gap is still deferred to the outbox/reconciliation work.
+
+The cross-runtime integration test now uses disposable PostgreSQL, RabbitMQ, and
+MinIO with the actual Python worker and child processes. It verifies text/PDF success
+and safe outcomes for missing and oversized PDF objects.
 
 ## Current observability
 

@@ -69,7 +69,7 @@ Failure test: make object storage unavailable and verify no falsely completed do
 
 Target: Day 4
 
-Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default. Text submission now saves the source, commits queued state, and publishes to the Python worker. PDF publication waits for extraction support. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
+Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default. Text submission now saves the source, commits queued state, and publishes to the Python worker. Verified PDF uploads now publish too. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
 
 - [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
 - [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
@@ -80,14 +80,19 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [x] Install Psycopg and Python Testcontainers; verify the source/configuration repositories.
 - [x] Implement and verify text ingestion, revision guards, atomic chunk replacement, and advisory-lock coordination.
 - [x] Install aio-pika and verify the RabbitMQ consumer integration test.
-- [ ] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
+- [x] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
+- [x] Install pypdf and verify extraction plus page-aware chunking on synthetic PDF fixtures, including blank pages, encryption, malformed input, and deterministic global ordinals.
+- [x] Adapt the ingestion service to database source type and atomically persist PDF page metadata; test ownership, revisions, duplicate delivery, and safe extraction failures with the storage boundary replaced in tests.
+- [x] Install boto3 and verify the S3 loader against disposable MinIO through the real worker.
+- [x] Enforce one overall 30-second deadline for sequential PDF download, extraction, and chunking in one terminable child process.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
 - [x] Add RabbitMQ configuration and a Python consumer client.
 - [x] Install amqplib and connect the TypeScript publisher to text submission.
 - [x] Configure matching queue names through required environment variables in both runtimes.
 - [ ] Validate the versioned message in Python and test producer/consumer contract compatibility.
 - [x] Publish ingestion messages after text submission.
-- [ ] Publish after verified PDF completion and revision-safe text editing.
+- [x] Publish after verified PDF completion, with safe repeat/concurrent completion.
+- [ ] Publish after revision-safe text editing.
 - [x] Add a thin Python RabbitMQ consumer that delegates to the ingestion service and acknowledges committed text outcomes.
 - [ ] Recover durable pending publication and abandoned processing after failures.
 - [ ] Add bounded retries, backoff, timeouts, structured logs, and safe failure state.
@@ -216,6 +221,7 @@ Stop adding features when the deployed application supports private asynchronous
 - Compare alternative Python document extractors on the same PDFs.
 - Learn model calls, structured outputs, and tool calling with LangChain where its components help.
 - Build a bounded document-search agent, then explore LangGraph branching, checkpoints, and human approval when the exercise requires them.
+- Learn tool definitions, validated arguments/results, tool-call execution, and bounded agent loops through that search exercise. Compare structure-aware extraction and agent-directed extraction against the deterministic baseline only after ingestion and retrieval evaluation work.
 - Evaluate per-user chunking settings before adding alternative active chunk sets.
 
 These exercises do not block Phase 4 or expand the V1 release gate.
