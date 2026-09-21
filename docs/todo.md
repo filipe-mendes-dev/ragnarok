@@ -46,8 +46,8 @@ block starting Phase 5 unless explicitly stated.
 
 ## Ingestion quality and later decisions
 
-- [ ] **Evaluate chunk settings with retrieval.** Current defaults are 1,000 Unicode
-  code points and 150 target overlap. Review a representative corpus and retrieval
+- [ ] **Evaluate chunk settings with retrieval.** Current ingestion defaults are 384 BGE
+  content tokens and 48 target overlap. Review a representative corpus and retrieval
   results before claiming these values are optimal.
 - [ ] **Broaden PDF extraction fixtures.** Layout mode fixes the inspected letter;
   add synthetic positioned-word, column, and table examples to check reading order.
