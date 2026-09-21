@@ -3,7 +3,7 @@
 The worker consumes RabbitMQ messages and ingests queued text and PDF documents. It loads
 an owned revision from PostgreSQL, splits it with LangChain, and saves its chunks.
 Next.js publishes new text submissions and verified PDF upload completions.
-Phase 4 failure recovery remains unfinished.
+Failure recovery remains unfinished; see the [backlog](../docs/todo.md).
 
 ## Install and run
 
@@ -17,6 +17,9 @@ uv sync
 RabbitMQ protocol and handles connection I/O. Pydantic validates incoming JSON,
 like Zod in TypeScript. Neither the standard library nor Psycopg provides an AMQP
 client. uv owns `uv.lock`; do not edit it manually.
+
+Apply committed migrations with `npm run db:migrate` from the repository root
+before starting the worker. The worker never creates or migrates tables.
 
 Copy the RabbitMQ variables from the root `.env.example` to your existing `.env`.
 Do not replace your existing environment file. From the repository root, run:
@@ -35,11 +38,15 @@ identity stable. This development image follows the RabbitMQ 4 major series.
 From `worker`, start the consumer:
 
 ```bash
-uv run --env-file ../.env python -m ragnarok_ingestion
+uv run --env-file ../.env worker
 ```
 
-uv loads the root environment and runs the installed Python package. Python calls
-its `__main__.py`. The worker stays running until interrupted or an unrecovered
+The `[project.scripts]` entry maps `worker` to `main()` in `ragnarok_ingestion.__main__`.
+uv installs the command when syncing the project. The `--env-file` option loads the
+root environment. If those variables are already supplied by your shell or deployment,
+use `uv run worker`. For that shorter command in a local terminal, first run
+`export UV_ENV_FILE=../.env` from the worker directory. This applies to that shell session.
+The worker stays running until interrupted or an unrecovered
 error occurs. No HTTP server is involved. It declares the durable queues
 `ragnarok.ingestion.v1` and `ragnarok.ingestion.rejected.v1`.
 
@@ -114,8 +121,8 @@ changing the source. Every worker status update checks owner, ID, revision, and
 expected status, so an old job cannot finish a newer revision. Completed jobs are
 ignored on redelivery, preserving the existing chunk IDs.
 
-Queued and processing text documents are eligible. Processing can be reclaimed
-once an interrupted worker's advisory lock is gone. Uploaded documents, PDFs,
+Queued and processing text and PDF documents are eligible. Processing can be reclaimed
+once an interrupted worker's advisory lock is gone. Uploaded documents,
 completed/failed documents, missing documents, and unmatched ownership/revisions
 are ignored. PDF jobs load the authorized storage key from S3.
 
@@ -126,12 +133,9 @@ An unexpected processing exception also stops the process. Restart allows Rabbit
 to redeliver unacknowledged work. Oversized or blank text receives a fixed safe
 failure summary in PostgreSQL.
 
-Still pending before Phase 4 is complete:
-
-- Durable attempt counts and terminal handling of unexpected processing failures.
-- Recovery of a saved document whose message was never published.
-- Production supervision and graceful drain behavior on shutdown.
-- Cross-runtime contract fixtures and explicit broker/crash fault tests.
+Deferred recovery, retry, supervision, and fault-test work is tracked in the
+[backlog](../docs/todo.md). It does not block Phase 5, but deployment reliability
+remains unfinished.
 
 The current attempt limit resets after restart. PDF downloading, extraction, and chunking share
 one subprocess deadline, but this does not provide full crash recovery.
@@ -205,6 +209,12 @@ concrete exercise in why several successful individual queries are not sufficien
 
 ## PDF service integration
 
+Extraction uses pypdf layout mode, preserving position-based lines and paragraph
+gaps. Pages without content streams are skipped. Layout mode can add spaces and
+does not guarantee correct reading order for columns or tables. Restart the worker
+after code changes; existing chunks require explicit re-ingestion or a new upload.
+
+
 `ingest_document(database_url, job)` selects the owned source in PostgreSQL and calls
 `process_pdf(storage_key, settings)` for PDFs. One child downloads, extracts, and chunks
 in sequence. `load_pdf_from_s3` and `chunk_pdf` are ordinary synchronous helpers.
@@ -221,3 +231,20 @@ responsibility. The child has no database work. This is not a memory sandbox.
 Run local infrastructure, Next.js, and the worker with the commands above, upload a
 PDF, and refresh Documents. Existing uploaded documents still need completion/recovery;
 worker startup does not backfill them. No dependency or migration changes are needed.
+
+## Troubleshooting worker failures
+
+Start from `worker/` with `uv run --env-file ../.env worker`. Logs go to stderr
+and include timestamps and event names. Follow `job_received` by document/revision,
+then `ingestion_stage` to see how far execution reached. `job_attempt_failed`
+precedes a retry; `job_failed` and `worker_stopped` identify fatal failures.
+`pdf_child_failed` preserves safe exception details from the PDF subprocess:
+exit code 3 means download failed; exit code 1 means extraction/chunking failed.
+`pdf_child_timeout` identifies the overall PDF deadline.
+
+Exception details include class and file/function/line locations, and available
+SQLSTATE, storage error codes, or missing configuration key names. They omit raw
+exception messages and source contents. Share these event lines when diagnosing
+a failure. Logs are not stored centrally yet. A `job_finished` outcome of `failed`
+means the document's failure was persisted and the message acknowledged; consult
+the document's safe processing error for the reason.

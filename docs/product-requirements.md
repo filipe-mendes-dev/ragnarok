@@ -4,7 +4,10 @@
 
 - Status: Draft approved for implementation planning
 - Product version: V1 portfolio release
-- Last updated: 2026-09-08
+- Last updated: 2026-09-21
+
+These are V1 requirements, not a list of shipped features. See the
+[roadmap](roadmap.md) for implementation status and [backlog](todo.md) for deferred work.
 
 ## Product summary
 
@@ -229,11 +232,12 @@ The V1 product is complete when a recruiter can:
 
 The project stops expanding when these criteria are met.
 
+Authentication uses Better Auth. The current PDF limits are 100 pages and 100,000
+extracted Unicode characters, with a 30-second PDF processing deadline.
+
 ## Open product decisions
 
-- Authentication provider or library
 - Embedding and generation providers and models
 - Production object-storage provider
-- Exact PDF page and extracted-content limits
 - Whether reranking fits before the deployment milestone
 - Whether the public deployment offers self-service accounts or a controlled demo account

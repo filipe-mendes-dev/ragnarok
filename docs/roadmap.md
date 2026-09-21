@@ -1,10 +1,13 @@
 # RAGnarok Implementation Roadmap
 
-Last updated: 2026-09-08
+Last updated: 2026-09-21
 
 ## Working rule
 
 Complete phases in order. A phase is complete when its observable outcome and verification gate pass. Reranking and visual polish are the first items deferred when schedule pressure appears.
+
+Deferred details and completion conditions live in [todo.md](todo.md). Keep phase
+status here and record new agreed follow-ups there.
 
 ## Phase 0: Repository foundation
 
@@ -28,7 +31,7 @@ Target: Days 1-2
 - [x] Configure Drizzle and committed migrations.
 - [x] Add Better Auth user, account, session, verification, and rate-limit tables.
 - [x] Add the owned document table with source-specific database constraints.
-- [ ] Add the chunk table when ingestion and embedding requirements are implemented.
+- [x] Add chunk and chunk-configuration tables for ingestion; vectors belong to Phase 5.
 - [ ] Add conversation, message, retrieval-run, and candidate tables when the question-answering flow requires them.
 - [ ] Verify database persistence across container restarts.
 
@@ -56,7 +59,7 @@ Target: Day 3
 - [x] Submit and list owned plain-text documents.
 - [ ] Edit submitted plain-text documents.
 - [x] Upload PDFs directly to object storage with a configurable file-size limit.
-- [ ] Enforce extracted-content limits when PDF parsing is implemented.
+- [x] Enforce PDF page, extracted-content, download-size, and processing-time limits.
 - [x] Store original PDF bytes in object storage and metadata in PostgreSQL.
 - [ ] Delete owned documents.
 - [x] Expose document state in the UI.
@@ -69,10 +72,18 @@ Failure test: make object storage unavailable and verify no falsely completed do
 
 Target: Day 4
 
+Delivery priority: the text/PDF ingestion path works. Proceed to Phase 5 embeddings
+and retrieval, then grounded answers, before expanding edge-case work. Keep focused
+checks for each change; defer broader fault testing until the product flow is complete.
+Outbox/reconciliation, durable retry exhaustion, retry UI, and shutdown supervision
+remain tracked reliability follow-ups before public deployment. They do not block
+starting Phase 5. Text editing/re-ingestion remains a separate unfinished V1 feature.
+Unchecked items below are retained as follow-ups, not represented as completed work.
+
 Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default. Text submission now saves the source, commits queued state, and publishes to the Python worker. Verified PDF uploads now publish too. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
 
 - [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
-- [ ] Review sample chunks and choose size measurement, maximum size, and overlap.
+- [x] Establish a baseline of 1,000 Unicode code points and 150 target overlap; sample PDF chunks reviewed. Retrieval-based tuning remains in the backlog.
 - [x] Generate and inspect `worker/uv.lock` with uv; confirm the installed LangChain splitter version.
 - [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
 - [x] Install pytest and verify the existing suite under the configured runner.
@@ -89,14 +100,20 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [x] Add RabbitMQ configuration and a Python consumer client.
 - [x] Install amqplib and connect the TypeScript publisher to text submission.
 - [x] Configure matching queue names through required environment variables in both runtimes.
-- [ ] Validate the versioned message in Python and test producer/consumer contract compatibility.
+- [x] Validate versioned messages in Python and verify real TypeScript-to-Python delivery.
+- [ ] Add shared valid/invalid contract fixtures across both runtimes; see [backlog](todo.md).
 - [x] Publish ingestion messages after text submission.
 - [x] Publish after verified PDF completion, with safe repeat/concurrent completion.
 - [ ] Publish after revision-safe text editing.
 - [x] Add a thin Python RabbitMQ consumer that delegates to the ingestion service and acknowledges committed text outcomes.
 - [ ] Recover durable pending publication and abandoned processing after failures.
-- [ ] Add bounded retries, backoff, timeouts, structured logs, and safe failure state.
-- [ ] Make duplicate execution and chunk replacement idempotent.
+- [x] Add three attempts per delivery, backoff, operation deadlines, diagnostic key/value logs, and safe expected-failure state.
+- [ ] Persist retry exhaustion across restarts and standardize cross-runtime JSON logs; see [backlog](todo.md).
+- [x] Make duplicate execution and chunk replacement idempotent with revision guards and atomic persistence; service tests cover redelivery and rollback.
+
+Local text/PDF flow was confirmed working by the user on 2026-09-21 after applying
+migrations and switching PDF extraction to layout mode. This does not establish
+production readiness or complete the deferred reliability work.
 
 Gate: documents move visibly through queued, processing, completed, and failed states.
 

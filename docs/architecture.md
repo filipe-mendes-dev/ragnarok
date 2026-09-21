@@ -3,7 +3,7 @@
 ## Document status
 
 - Status: Accepted for V1 implementation
-- Last updated: 2026-09-08
+- Last updated: 2026-09-21
 - Related product definition: `docs/product-requirements.md`
 
 ## Architectural summary
@@ -13,11 +13,14 @@ RAGnarok V1 has a TypeScript web application and a Python ingestion worker in on
 1. A Next.js web process that renders the UI and owns the browser-facing HTTP boundary.
 2. A Python RabbitMQ worker process that performs asynchronous document ingestion.
 
-The web application owns TypeScript services under `src/server`. The worker owns Python ingestion services under `worker/src/ragnarok_ingestion`. They share a versioned JSON message contract and the PostgreSQL schema, not executable modules. Drizzle remains the sole migration owner; Python repositories will query that schema without a second migration system. PostgreSQL is the durable system of record. RabbitMQ coordinates background jobs. Original PDFs live in S3-compatible object storage.
+The web application owns TypeScript services under `src/server`. The worker owns Python ingestion services under `worker/src/ragnarok_ingestion`. They share a versioned JSON message contract and the PostgreSQL schema, not executable modules. Drizzle remains the sole migration owner; Python repositories query that schema without a second migration system. PostgreSQL is the durable system of record. RabbitMQ coordinates background jobs. Original PDFs live in S3-compatible object storage.
 
 V1 does not introduce a separate Fastify, NestJS, or Python API because there is no independent API consumer or deployment requirement that justifies another network boundary.
 
-## Finalized V1 stack
+## V1 stack
+
+This table includes planned retrieval, deployment, and CI components. See the
+[roadmap](roadmap.md) for implementation status.
 
 | Concern | Choice | Purpose |
 | --- | --- | --- |
@@ -41,7 +44,7 @@ V1 does not introduce a separate Fastify, NestJS, or Python API because there is
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
 | CI/CD | GitHub Actions | Lint, type checking, tests, build, and later deployment |
 
-Authentication uses Better Auth. AI providers, the PDF extraction library, and the production object-storage provider remain implementation decisions.
+Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. AI providers and the production object-storage provider remain implementation decisions.
 
 ## Repository structure
 
@@ -76,8 +79,8 @@ ragnarok/
 │   └── shared/                    # Environment-neutral TypeScript contracts
 ├── worker/
 │   ├── pyproject.toml             # Python dependencies
-│   ├── src/ragnarok_ingestion/    # Python chunking and future ingestion services
-│   └── tests/unit/                # Python unit tests mirroring the package
+│   ├── src/ragnarok_ingestion/    # Python ingestion, repositories, and consumer
+│   └── tests/unit/                # Python unit tests; integration tests live alongside them
 ├── drizzle/                       # Committed SQL migrations
 ├── tests/
 │   ├── integration/
@@ -146,7 +149,7 @@ It does not import database clients, Node-only APIs, secrets, RabbitMQ, or provi
 
 ### `worker/src/ragnarok_ingestion`
 
-Contains Python ingestion behavior. The future RabbitMQ entry point will handle process setup and delegate to an ingestion service. That service owns Python repository calls and transactions. The initial module is `chunking.py`; no broker consumer exists yet.
+Contains Python ingestion behavior. The entry point configures logging and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download, extraction, and chunking run sequentially in one bounded child process.
 
 ## Client and server dependency graphs
 
@@ -251,13 +254,13 @@ PDF uploads use a two-phase object-storage workflow. The server authenticates th
 
 ## Phase 4 decisions and implementation order
 
-RabbitMQ replaces the earlier BullMQ/Redis plan. It connects the TypeScript publisher and the planned Python worker through established messaging clients. Learning message delivery and acknowledgements is an explicit project goal. The trade-off is more application work for retry delays, attempt limits, and failure handling than BullMQ supplies through job options.
+RabbitMQ replaces the earlier BullMQ/Redis plan. It connects the TypeScript publisher and the Python worker through established messaging clients. Learning message delivery and acknowledgements is an explicit project goal. The trade-off is more application work for retry delays, attempt limits, and failure handling than BullMQ supplies through job options.
 
 RabbitMQ does not use Redis. Redis is disabled by default behind the `legacy-redis` Compose profile, and the web environment no longer requires `REDIS_URL`. Its volume is retained. An existing Redis container must be stopped explicitly; changing profiles does not stop a running container. RabbitMQ is configured in `compose.dev.yml`. Next.js publishes text submissions and verified PDF upload completions to the Python consumer.
 
 Start with one ingestion queue and one Python worker process. The worker delegates to an ingestion service and initially processes one document at a time. A single message covers loading, extraction, chunking, and persistence. Retries may repeat computation; duplicate persisted chunks remain forbidden. PostgreSQL stores document status and chunks. RabbitMQ carries a versioned message containing `version`, `documentId`, `revision`, and `userId`; it does not carry source contents or storage credentials. The producer supplies the authenticated owner, and the service checks ownership and revision in its database query before reading a source.
 
-A consumer acknowledges delivery only after the service has committed its outcome. Delivery can repeat, so chunk replacement and document completion must commit together and reject stale revisions. Saving a document and publishing a message are separate operations; durable scheduling intent and recovery must close that failure gap when queue integration is implemented. RabbitMQ acknowledgements do not establish business completion in PostgreSQL.
+A consumer acknowledges delivery only after the service has committed its outcome. Delivery can repeat, so chunk replacement and document completion must commit together and reject stale revisions. Saving a document and publishing a message are separate operations; durable scheduling intent and recovery must close that failure gap before public deployment. RabbitMQ acknowledgements do not establish business completion in PostgreSQL.
 
 Implement in small steps:
 
@@ -266,7 +269,7 @@ Implement in small steps:
 3. Implement source loading, PDF extraction, and the ingestion service with focused service tests.
 4. Add RabbitMQ configuration and implement publication, a thin consumer, bounded retries, and recovery. Test actual broker delivery and worker crashes with Testcontainers.
 
-Start with paragraph-aware splitting and a maximum size. Chunks can have different sizes. The initial Python chunker uses 1,000 Unicode code points and a target overlap of 150, both adjustable. These are trial values pending sample review and later retrieval evaluation. Chunks carry ordinal, text, and optional PDF page number; persistence records the source revision and chunk configuration. Store one active chunk set per document, including source revision, order, text, source location where available, and enough method/version/settings metadata to identify how it was produced. Later customization can change settings or replace the method; simultaneous chunk sets are deferred.
+Start with paragraph-aware splitting and a maximum size. Chunks can have different sizes. The initial Python chunker uses 1,000 Unicode code points and a target overlap of 150, both adjustable. Sample chunks have been reviewed; these remain trial values pending retrieval evaluation. Chunks carry ordinal, text, and optional PDF page number; persistence records the source revision and chunk configuration. Store one active chunk set per document, including source revision, order, text, source location where available, and enough method/version/settings metadata to identify how it was produced. Later customization can change settings or replace the method; simultaneous chunk sets are deferred.
 
 The Python chunker uses the pinned `langchain-text-splitters` package and its `RecursiveCharacterTextSplitter`. This local operation needs no provider credentials. Ordinary functions remain suitable for this fixed ingestion workflow. LangGraph and agents are outside V1. After ordinary RAG works, a separate learning exercise can introduce tool calling, then conditional workflows and persisted execution. Python is an explicit learning choice for this milestone. It adds dependency management, message-contract validation in both languages, and separate persistence code. It does not add a Python HTTP API. See `worker/README.md` for setup and current limitations.
 
@@ -282,7 +285,7 @@ Each `document_chunk` row stores:
 - `revision`: the source revision that produced the chunk. It deliberately does not reference the document's mutable current revision, so old chunks survive edits until replacement commits.
 - `ordinal`: zero-based position across the document, not restarted on each PDF page.
 - `text`: nonblank chunk content.
-- `page_number`: nullable for submitted text; a positive one-based PDF page when available. Initial PDF extraction will split each page separately so a chunk belongs to one page. This simplifies citations but can split context across page boundaries.
+- `page_number`: nullable for submitted text; a positive one-based PDF page when available. PDF extraction splits each page separately so a chunk belongs to one page. This simplifies citations but can split context across page boundaries.
 - `chunk_config_id`: required reference to the configuration that produced this chunk.
 - `created_at`: insertion timestamp.
 
@@ -290,19 +293,19 @@ The unique index on `(document_id, revision, ordinal)` prevents duplicate positi
 
 The ingestion service must check text length against the selected configuration and use one configuration within a replacement set, check the current revision, and replace chunks plus completion status atomically. A PostgreSQL CHECK cannot read the referenced configuration, so text length is no longer checked against size on the chunk row. Constraints alone do not enforce those workflow rules. The schema allows multiple revisions to coexist; the replacement workflow determines which set remains active.
 
-No embeddings, lexical-search fields, or source offsets are added in this step. Drizzle owns the migration; Python will insert into the resulting PostgreSQL table through Psycopg after the migration is verified.
+No embeddings, lexical-search fields, or source offsets are added in this step. Drizzle owns the migration; Python inserts into PostgreSQL through Psycopg using the committed schema.
 
-## Python worker integration plan
+## Python worker integration
 
-The Python package contains text chunking, PostgreSQL repositories, a text ingestion service, Pydantic message validation, and an aio-pika consumer. The TypeScript document service now calls `publishIngestionJob` after saving a text document and committing its queued state. Verified PDF upload completion now queues and publishes the owned revision too.
+The Python package contains text chunking, PostgreSQL repositories, a text/PDF ingestion service, Pydantic message validation, and an aio-pika consumer. The TypeScript document service now calls `publishIngestionJob` after saving a text document and committing its queued state. Verified PDF upload completion now queues and publishes the owned revision too.
 
 Next.js authenticates the user and saves the source through its existing TypeScript services and Drizzle repositories. It publishes a versioned JSON message through RabbitMQ. A separately running Python consumer validates that message and delegates to the Python ingestion service. The service queries PostgreSQL with owner, document, and revision filters before accessing the source, then calls extraction and chunking. The web application continues to read status from PostgreSQL through Drizzle; no callback to Next.js is required for completion.
 
-Use Pydantic for the incoming Python message when that boundary is implemented, with strict validation and forbidden extra fields. It plays the same validation role as Zod. Preserve the existing JSON field names across languages and test the same valid and invalid messages in both runtimes. Internal chunk values remain dataclasses. Pydantic is not a persistence layer or an authorization mechanism.
+Pydantic validates incoming Python messages with strict validation and forbidden extra fields. It plays the same validation role as Zod. Preserve the existing JSON field names across languages and test the same valid and invalid messages in both runtimes. Internal chunk values remain dataclasses. Pydantic is not a persistence layer or an authorization mechanism.
 
 The recommended initial database client is Psycopg 3 with parameterized SQL in focused Python repositories. Psycopg repositories and their database tests are implemented and verified. Psycopg handles PostgreSQL connections and queries; an ORM is not required for the small ingestion query set. Drizzle continues to define and generate the shared schema and migrations. Python tests apply those same migrations to disposable PostgreSQL infrastructure; the worker does not create tables or introduce Alembic migrations.
 
-Python services own transaction boundaries and pass a connection to repositories. The text service opens a dedicated PostgreSQL connection and acquires a session advisory lock derived from the document ID. This serializes cooperating ingestion workers for the same document. It does not prevent a web edit; owner and revision predicates reject stale results. The connection closes after each job, releasing its advisory lock. Do not put this connection behind transaction-mode pooling.
+Python services own transaction boundaries and pass a connection to repositories. The ingestion service opens a dedicated PostgreSQL connection and acquires a session advisory lock derived from the document ID. This serializes cooperating ingestion workers for the same document. It does not prevent a web edit; owner and revision predicates reject stale results. The connection closes after each job, releasing its advisory lock. Do not put this connection behind transaction-mode pooling.
 
 A short transaction transitions queued or interrupted processing work to processing. Chunking runs outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks. Both writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
 
@@ -314,7 +317,7 @@ Using Python means SQL queries do not inherit Drizzle's compile-time schema chec
 
 Use `<domain>-input.ts` for runtime validation of incoming data, matching `document-input.ts` and `ingestion-input.ts`. Export named `parse<Operation>Input` functions that accept `unknown` and return an explicitly typed value. Name the resulting interface `<Operation>Input`, for example `IngestionJobInput`, and keep its Zod schema private as `<operation>InputSchema` unless another caller actually needs it.
 
-Python modules use snake_case, for example `ingestion_input.py` and `parse_ingestion_job_input`. The future consumer must validate JSON at runtime; Python annotations alone do not validate messages.
+Python modules use snake_case, for example `ingestion_input.py` and `parse_ingestion_job_input`. The consumer validates JSON at runtime; Python annotations alone do not validate messages.
 
 Several related inputs may share a domain file. Scalar validators may keep names such as `parseDocumentId`. This convention applies to new domain input modules; it does not require renaming existing environment configuration or shared document contracts.
 
@@ -375,7 +378,7 @@ packages/
 
 Technology migration is not itself a goal. A future framework must solve a demonstrated runtime, ownership, client, or ecosystem problem.
 
-## Current text-worker sequence
+## Current ingestion sequence
 
 ```mermaid
 sequenceDiagram
@@ -385,9 +388,12 @@ sequenceDiagram
     participant DB as PostgreSQL
     Q->>W: Document ID, owner ID, revision, version
     W->>W: Validate JSON
-    W->>S: Run text ingestion
+    W->>S: Run document ingestion
     S->>DB: Acquire document advisory lock
     S->>DB: Commit processing for matching owned revision
+    alt PDF source
+        S->>S: Child downloads S3 object and extracts layout text
+    end
     S->>S: Split source with LangChain
     S->>DB: Commit replacement chunks and completed together
     S->>DB: Close connection and release lock
@@ -397,11 +403,12 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    uploaded --> queued: Text submission commits queued before publication
+    uploading --> uploaded: Verify PDF object metadata
+    uploaded --> queued: Commit queued before publication
     queued --> processing: Worker accepts matching revision
     processing --> processing: Redelivery after interrupted processing
     processing --> completed: Atomic chunk replacement
-    processing --> failed: Invalid text source
+    processing --> failed: Expected source or PDF processing failure
 ```
 
 Infrastructure errors currently leave the delivery unacknowledged. They do not
@@ -451,8 +458,11 @@ not the RabbitMQ container. Both clients declare the queue durability and routin
 ## PDF extraction implementation status
 
 `worker/src/ragnarok_ingestion/pdf_extraction.py` prepares a standalone pypdf
-extractor, now verified against synthetic PDF fixtures with pypdf 6.19.0. It accepts
+extractor using layout mode, verified against synthetic PDF fixtures with pypdf 6.19.0. It accepts
 bytes and returns text with original one-based page numbers, skipping empty pages.
+Layout mode reconstructs lines from text positions; it may add spaces and does not
+guarantee reading order for columns or tables. Pages without content streams are
+skipped before extraction. Existing chunks are not rebuilt when extraction changes.
 Initial limits are 100 pages and 100,000 extracted Unicode characters, counted
 before whitespace normalization. It rejects encrypted documents and documents
 without extractable text. Strict parsing intentionally rejects some recoverable
@@ -488,15 +498,29 @@ The cross-runtime integration test now uses disposable PostgreSQL, RabbitMQ, and
 MinIO with the actual Python worker and child processes. It verifies text/PDF success
 and safe outcomes for missing and oversized PDF objects.
 
+Detailed deferred work and completion conditions are tracked in [todo.md](todo.md).
+
+## Delivery sequencing
+
+The working text/PDF ingestion flow is sufficient to begin embeddings, retrieval,
+and grounded answers. Publication recovery, durable retry limits, retry UI, shutdown
+supervision, and broader failure testing are deferred until that product path works,
+and remain required reliability follow-ups before public deployment. Preserve the
+existing ownership, revision, atomic-write, and execution-limit protections. Continue
+focused checks rather than repeatedly running every suite for small changes.
+
 ## Current observability
 
-Python uses the standard `logging` module. Its entry point configures INFO-level
-output with level and message on stderr. It logs readiness, invalid-message
-rejection, document/revision/outcome after acknowledgement, keyboard shutdown, and
-a generic fatal error. It does not log document contents or raw driver exceptions.
-These are plain text logs, not JSON event records, and the configured format does
-not include timestamps. Per-attempt logs, durations, stack diagnostics, and a
-persistent log collector are not implemented.
+Python uses the standard `logging` module with timestamps, severity, module names,
+and key/value events on stderr. Consumer events record document/revision, attempt,
+redelivery, retries, acknowledgement, outcome, and total duration. Service events
+identify database connection, claim, chunking, and persistence stages. Exceptions
+include their class and the last six file/function/line locations, plus PostgreSQL
+SQLSTATE, storage error code, or a recognized missing environment key when available.
+PDF children return the same safe diagnostics to the parent on unexpected failures.
+Raw exception messages, source text, object keys, credentials, and locals are omitted.
+These are plain text logs, not full JSON event records. No persistent log collector
+is configured.
 
 PostgreSQL stores the current document status, safe processing error, revision,
 and timestamps. It does not yet store an ingestion attempt/event history. The
@@ -510,7 +534,6 @@ PostgreSQL, RabbitMQ, or worker readiness. No distributed tracing, OpenTelemetry
 instrumentation, metrics collection/alerting, or completed RAG trace storage is
 implemented. The trace requirements elsewhere in this document are future work.
 
-The next observability step should add timestamped structured events with document,
-revision, stage, attempt, duration, and outcome, using the same logical job identity
-in both runtimes. Propagated trace context and durable ingestion history are separate
+The next observability step should standardize JSON events and collection across
+both runtimes, using the same logical job identity. Propagated trace context and durable ingestion history are separate
 choices; AMQP message IDs and console output alone do not provide them.
