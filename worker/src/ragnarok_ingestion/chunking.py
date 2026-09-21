@@ -1,6 +1,7 @@
 """Deterministic text splitting without database or queue access."""
 
 from dataclasses import dataclass
+from collections.abc import Callable
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -9,7 +10,7 @@ CHUNKING_METHOD = "recursive-character-v1"
 
 @dataclass(frozen=True)
 class ChunkingSettings:
-    """Sizes use Python Unicode code points, not bytes or model tokens."""
+    """Sizes use Unicode code points unless the caller supplies a token counter."""
 
     chunk_size: int = 1_000
     chunk_overlap: int = 150
@@ -36,6 +37,8 @@ class TextChunk:
 def chunk_text(
     text: str,
     settings: ChunkingSettings = ChunkingSettings(),
+    *,
+    length_function: Callable[[str], int] = len,
 ) -> list[TextChunk]:
     """Normalize line endings, then prefer paragraphs, lines, and word boundaries.
 
@@ -53,7 +56,7 @@ def chunk_text(
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
-        length_function=len,
+        length_function=length_function,
         separators=["\n\n", "\n", " ", ""],
         keep_separator=True,
         is_separator_regex=False,
