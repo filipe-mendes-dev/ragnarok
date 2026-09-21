@@ -17,6 +17,9 @@ dependencies = [
     "pypdf>=6.19,<7",
 ]
 
+[project.scripts]
+worker = "ragnarok_ingestion.__main__:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
