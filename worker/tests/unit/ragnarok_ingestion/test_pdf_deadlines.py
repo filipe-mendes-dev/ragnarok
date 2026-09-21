@@ -5,7 +5,6 @@ import sys
 import pytest
 
 from ragnarok_ingestion import pdf_processing
-from ragnarok_ingestion.chunking import ChunkingSettings
 from ragnarok_ingestion.pdf_extraction import PdfExtractionError
 
 
@@ -21,7 +20,7 @@ def test_deadline_terminates_and_reaps_the_child(
 
     monkeypatch.setattr(pdf_processing, "PDF_PROCESSING_TIMEOUT_SECONDS", 2)
     with pytest.raises(PdfExtractionError, match="30-second limit"):
-        pdf_processing.process_pdf("owned/source.pdf", ChunkingSettings())
+        pdf_processing.process_pdf("owned/source.pdf")
 
     pid = int(pid_file.read_text())
     with pytest.raises(ProcessLookupError):

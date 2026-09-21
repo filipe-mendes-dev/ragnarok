@@ -15,10 +15,12 @@ from ragnarok_ingestion.consumer import (
     declare_ingestion_queue,
 )
 from ragnarok_ingestion.database import connect_database
+from ragnarok_ingestion.embedding import LocalEmbedder
 
 
 def test_worker_persists_real_delivery_and_rejects_invalid_json(
     migrated_database_url: str,
+    embedder: LocalEmbedder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("INGESTION_QUEUE_NAME", "test.ingestion")
@@ -63,7 +65,7 @@ def test_worker_persists_real_delivery_and_rejects_invalid_json(
                                 aio_pika.Message(payload, delivery_mode=aio_pika.DeliveryMode.PERSISTENT),
                                 routing_key=queue.name, mandatory=True, timeout=10,
                             )
-                        worker = asyncio.create_task(consume_ingestion(url, migrated_database_url))
+                        worker = asyncio.create_task(consume_ingestion(url, migrated_database_url, embedder))
                         try:
                             rejected_queue = await channel.get_queue("test.rejected")
                             async with asyncio.timeout(20):

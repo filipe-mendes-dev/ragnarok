@@ -10,8 +10,14 @@ from psycopg import Connection
 from testcontainers.community.postgres import PostgresContainer
 
 from ragnarok_ingestion.database import connect_database
+from ragnarok_ingestion.embedding import DEFAULT_MODEL_DIRECTORY, LocalEmbedder, load_local_embedder
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(scope="session")
+def embedder() -> LocalEmbedder:
+    return load_local_embedder(DEFAULT_MODEL_DIRECTORY)
 
 
 @pytest.fixture(scope="session")
