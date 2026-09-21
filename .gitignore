@@ -47,3 +47,4 @@ next-env.d.ts
 *.py[cod]
 *.egg-info/
 **/.pytest_cache/
+/worker/models/
