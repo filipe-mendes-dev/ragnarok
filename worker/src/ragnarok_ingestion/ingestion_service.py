@@ -11,9 +11,8 @@ from ragnarok_ingestion.document_repository import (
     update_status_for_user,
 )
 from ragnarok_ingestion.ingestion_input import IngestionJobInput
-from ragnarok_ingestion.pdf_chunking import chunk_pdf
+from ragnarok_ingestion.pdf_processing import process_pdf
 from ragnarok_ingestion.pdf_extraction import PdfExtractionError
-from ragnarok_ingestion.s3_source import PdfSourceError, load_pdf_from_s3
 
 
 class DocumentBusyError(Exception):
@@ -51,9 +50,8 @@ def ingest_document(
                 raise RuntimeError("PDF source has no storage key")
             # Only the owned current revision can supply this storage key.
             try:
-                pdf_bytes = load_pdf_from_s3(source.storage_key)
-                chunks = chunk_pdf(pdf_bytes, settings)
-            except (PdfSourceError, PdfExtractionError) as error:
+                chunks = process_pdf(source.storage_key, settings)
+            except PdfExtractionError as error:
                 error_message = str(error)
         else:
             raise RuntimeError("Unsupported document source type")

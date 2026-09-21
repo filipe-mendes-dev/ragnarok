@@ -13,6 +13,10 @@ class PdfSourceError(ValueError):
     """A permanent source problem with a safe document-facing message."""
 
 
+class PdfDownloadError(RuntimeError):
+    """A storage operation failed and may be retried."""
+
+
 def load_pdf_from_s3(storage_key: str) -> bytes:
     max_bytes = int(os.environ.get("PDF_MAX_UPLOAD_SIZE_BYTES", "10485760"))
     if max_bytes <= 0:

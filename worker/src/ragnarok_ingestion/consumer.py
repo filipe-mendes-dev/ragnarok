@@ -12,6 +12,8 @@ from pydantic import ValidationError
 from ragnarok_ingestion.ingestion_input import parse_ingestion_job_input
 from ragnarok_ingestion.ingestion_service import DocumentBusyError, ingest_document
 
+from ragnarok_ingestion.s3_source import PdfDownloadError
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ async def consume_ingestion(rabbitmq_url: str, database_url: str) -> None:
                         # their work from blocking RabbitMQ heartbeats in this loop.
                         outcome = await asyncio.to_thread(ingest_document, database_url, job)
                         break
-                    except (OperationalError, DocumentBusyError):
+                    except (OperationalError, DocumentBusyError, PdfDownloadError):
                         if attempt == 2:
                             # Exit without acknowledging. Closing the connection
                             # returns the delivery to RabbitMQ for a later restart.
