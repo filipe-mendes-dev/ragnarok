@@ -5,13 +5,17 @@ from typing import Literal
 
 from ragnarok_ingestion.chunk_config_repository import insert_chunk_config_if_missing
 from ragnarok_ingestion.chunk_repository import replace_document_chunks
-from ragnarok_ingestion.chunking import CHUNKING_METHOD, ChunkingSettings, TextChunk, chunk_text
+from ragnarok_ingestion.chunking import TextChunk
 from ragnarok_ingestion.database import connect_database
 from ragnarok_ingestion.document_repository import (
     try_lock_document,
     update_status_for_user,
 )
 from ragnarok_ingestion.ingestion_input import IngestionJobInput
+from ragnarok_ingestion.embedding import (
+    MODEL_NAME, MODEL_REVISION, TOKEN_CHUNKING_METHOD, TOKEN_CHUNKING_SETTINGS,
+    EmbeddingInputError, LocalEmbedder, chunk_for_embedding, embed_documents,
+)
 from ragnarok_ingestion.pdf_processing import process_pdf
 from ragnarok_ingestion.pdf_extraction import PdfExtractionError
 
@@ -24,7 +28,7 @@ class DocumentBusyError(Exception):
 
 
 def ingest_document(
-    database_url: str, job: IngestionJobInput,
+    database_url: str, job: IngestionJobInput, embedder: LocalEmbedder,
 ) -> Literal["completed", "failed", "ignored"]:
     # A dedicated connection is required: closing it releases the advisory lock.
     logger.info("event=ingestion_stage stage=database_connect document=%s revision=%s", job.document_id, job.revision)
@@ -45,25 +49,34 @@ def ingest_document(
         # This computation runs after the processing transaction has committed.
         logger.info("event=ingestion_stage stage=chunking document=%s revision=%s source_type=%s",
                     job.document_id, job.revision, source.source_type)
-        settings = ChunkingSettings()
         error_message: str | None = None
         chunks: list[TextChunk] = []
-        if source.source_type == "text":
-            text = source.source_text
-            if text is None or not text.strip() or len(text) > 100_000:
-                error_message = "Text must contain between 1 and 100,000 characters."
+        embeddings: list[list[float]] = []
+        try:
+            if source.source_type == "text":
+                text = source.source_text
+                if text is None or not text.strip() or len(text) > 100_000:
+                    error_message = "Text must contain between 1 and 100,000 characters."
+                else:
+                    chunks = chunk_for_embedding(text, embedder.tokenizer)
+            elif source.source_type == "pdf":
+                if source.storage_key is None:
+                    raise RuntimeError("PDF source has no storage key")
+                # Only the owned current revision can supply this storage key.
+                for page in process_pdf(source.storage_key):
+                    for chunk in chunk_for_embedding(page.text, embedder.tokenizer):
+                        chunks.append(TextChunk(len(chunks), chunk.text, page.page_number))
             else:
-                chunks = chunk_text(text, settings)
-        elif source.source_type == "pdf":
-            if source.storage_key is None:
-                raise RuntimeError("PDF source has no storage key")
-            # Only the owned current revision can supply this storage key.
-            try:
-                chunks = process_pdf(source.storage_key, settings)
-            except PdfExtractionError as error:
-                error_message = str(error)
-        else:
-            raise RuntimeError("Unsupported document source type")
+                raise RuntimeError("Unsupported document source type")
+
+            if error_message is None:
+                if not chunks:
+                    raise RuntimeError("Chunk output must not be empty")
+                logger.info("event=ingestion_stage stage=embedding document=%s revision=%s chunk_count=%s model=%s",
+                            job.document_id, job.revision, len(chunks), MODEL_NAME)
+                embeddings = embed_documents(embedder, [chunk.text for chunk in chunks])
+        except (PdfExtractionError, EmbeddingInputError) as error:
+            error_message = str(error)
 
         if error_message is not None:
             logger.warning("event=ingestion_rejected document=%s revision=%s source_type=%s",
@@ -75,9 +88,6 @@ def ingest_document(
                 )
             return "failed" if failed is not None else "ignored"
 
-        if not chunks or any(len(chunk.text) > settings.chunk_size for chunk in chunks):
-            raise RuntimeError("Chunk output violates the configured size")
-
         logger.info("event=ingestion_stage stage=persist document=%s revision=%s chunk_count=%s",
                     job.document_id, job.revision, len(chunks))
         with connection.transaction():
@@ -88,9 +98,11 @@ def ingest_document(
             if completed is None:
                 return "ignored"
             config_id = insert_chunk_config_if_missing(
-                connection, CHUNKING_METHOD, settings.chunk_size, settings.chunk_overlap
+                connection, TOKEN_CHUNKING_METHOD,
+                TOKEN_CHUNKING_SETTINGS.chunk_size, TOKEN_CHUNKING_SETTINGS.chunk_overlap,
             )
             replace_document_chunks(
-                connection, job.document_id, job.user_id, job.revision, config_id, chunks
+                connection, job.document_id, job.user_id, job.revision, config_id,
+                chunks, embeddings, MODEL_NAME, MODEL_REVISION,
             )
         return "completed"
