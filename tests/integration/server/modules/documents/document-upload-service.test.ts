@@ -1,7 +1,9 @@
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDocumentRepository } from "@/server/modules/documents/document-repository";
 import { createDocumentUploadService } from "@/server/modules/documents/document-upload-service";
+import type { IngestionJobInput } from "@/server/modules/ingestion/ingestion-input";
+import { IngestionPublishError } from "@/server/queue/rabbitmq-ingestion-publisher";
 import { PDF_MIME_TYPE } from "@/shared/documents";
 
 import { createPdfDocumentFixture } from "../../../../fixtures/documents";
@@ -13,10 +15,12 @@ import { createUserSeeder } from "../../../support/seeders/users";
 
 const { database, databasePool } = createIntegrationDatabase();
 const documentRepository = createDocumentRepository(database);
+const publish = vi.fn<(job: IngestionJobInput) => Promise<void>>();
 const userSeeder = createUserSeeder(database);
 
 describe("documentUploadService", () => {
     afterEach(async () => {
+        publish.mockReset();
         await userSeeder.cleanup();
     });
 
@@ -31,6 +35,7 @@ describe("documentUploadService", () => {
             const service = createDocumentUploadService(
                 documentRepository,
                 objectStorage,
+                publish,
             );
 
             const result = await service.startPdfUpload(owner.id, {
@@ -86,6 +91,7 @@ describe("documentUploadService", () => {
             const service = createDocumentUploadService(
                 documentRepository,
                 objectStorage,
+                publish,
             );
 
             await service.completePdfUpload(owner.id, fixture.id);
@@ -94,7 +100,12 @@ describe("documentUploadService", () => {
                 fixture.id,
             );
 
-            expect(persistedDocument?.status).toBe("uploaded");
+            expect(persistedDocument?.status).toBe("queued");
+            expect(publish).toHaveBeenCalledExactlyOnceWith({
+                version: 1, documentId: fixture.id, revision: 1, userId: owner.id,
+            });
+            await service.completePdfUpload(owner.id, fixture.id);
+            expect(publish).toHaveBeenCalledOnce();
             expect(objectStorage.metadataRequests).toEqual([fixture.storageKey]);
         });
 
@@ -107,6 +118,7 @@ describe("documentUploadService", () => {
             const service = createDocumentUploadService(
                 documentRepository,
                 objectStorage,
+                publish,
             );
 
             await expect(
@@ -118,6 +130,7 @@ describe("documentUploadService", () => {
                 fixture.id,
             );
             expect(persistedDocument?.status).toBe("uploading");
+            expect(publish).not.toHaveBeenCalled();
             expect(objectStorage.metadataRequests).toEqual([]);
         });
 
@@ -134,6 +147,7 @@ describe("documentUploadService", () => {
             const service = createDocumentUploadService(
                 documentRepository,
                 objectStorage,
+                publish,
             );
 
             await expect(
@@ -145,6 +159,38 @@ describe("documentUploadService", () => {
                 fixture.id,
             );
             expect(persistedDocument?.status).toBe("uploading");
+            expect(publish).not.toHaveBeenCalled();
+        });
+
+        it("preserves a queued PDF when publication confirmation fails", async () => {
+            const owner = await userSeeder.seed();
+            const fixture = createPdfDocumentFixture({ userId: owner.id });
+            await seedDocument(database, fixture);
+            const storage = createFakeDocumentObjectStorage({
+                metadata: { contentType: PDF_MIME_TYPE, sizeBytes: fixture.sizeBytes },
+            });
+            const service = createDocumentUploadService(documentRepository, storage, publish);
+            publish.mockRejectedValueOnce(new IngestionPublishError("timeout"));
+            await expect(service.completePdfUpload(owner.id, fixture.id))
+                .rejects.toEqual(new IngestionPublishError("timeout"));
+            expect(await readPersistedDocument(database, fixture.id))
+                .toMatchObject({ status: "queued", storageKey: fixture.storageKey });
+        });
+
+        it("publishes only once when upload completion requests race", async () => {
+            const owner = await userSeeder.seed();
+            const fixture = createPdfDocumentFixture({ userId: owner.id });
+            await seedDocument(database, fixture);
+            const storage = createFakeDocumentObjectStorage({
+                metadata: { contentType: PDF_MIME_TYPE, sizeBytes: fixture.sizeBytes },
+            });
+            const service = createDocumentUploadService(documentRepository, storage, publish);
+            await Promise.all([
+                service.completePdfUpload(owner.id, fixture.id),
+                service.completePdfUpload(owner.id, fixture.id),
+            ]);
+            expect(publish).toHaveBeenCalledOnce();
+            expect((await readPersistedDocument(database, fixture.id))?.status).toBe("queued");
         });
     });
 });

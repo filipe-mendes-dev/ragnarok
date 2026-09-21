@@ -35,6 +35,7 @@ function createTransport() {
 
 describe("publishIngestionJob failure boundaries", () => {
     beforeEach(() => {
+        vi.stubEnv("RABBITMQ_URL", "amqp://unused");
         vi.stubEnv("INGESTION_QUEUE_NAME", "test.ingestion");
         vi.stubEnv("INGESTION_REJECTED_QUEUE_NAME", "test.rejected");
     });
@@ -46,7 +47,7 @@ describe("publishIngestionJob failure boundaries", () => {
     });
 
     it("validates the job before opening a connection", async () => {
-        await expect(publishIngestionJob("amqp://unused", { ...job, revision: 0 }))
+        await expect(publishIngestionJob({ ...job, revision: 0 }))
             .rejects.toBeInstanceOf(ZodError);
         expect(connect).not.toHaveBeenCalled();
     });
@@ -58,7 +59,7 @@ describe("publishIngestionJob failure boundaries", () => {
             return true;
         });
 
-        await expect(publishIngestionJob("amqp://unused", job))
+        await expect(publishIngestionJob(job))
             .rejects.toEqual(new IngestionPublishError("unroutable"));
     });
 
@@ -67,7 +68,7 @@ describe("publishIngestionJob failure boundaries", () => {
         const confirmation = Promise.withResolvers<void>();
         channel.waitForConfirms.mockReturnValue(confirmation.promise);
         let finished = false;
-        const publication = publishIngestionJob("amqp://unused", job).then(() => {
+        const publication = publishIngestionJob(job).then(() => {
             finished = true;
         });
         await vi.waitFor(() => expect(channel.waitForConfirms).toHaveBeenCalled());
@@ -84,7 +85,7 @@ describe("publishIngestionJob failure boundaries", () => {
             socketSignal = options.signal;
             return new Promise<never>(() => undefined);
         });
-        const result = expect(publishIngestionJob("amqp://unused", job))
+        const result = expect(publishIngestionJob(job))
             .rejects.toEqual(new IngestionPublishError("timeout"));
         await vi.advanceTimersByTimeAsync(10_000);
         await result;
@@ -95,7 +96,7 @@ describe("publishIngestionJob failure boundaries", () => {
         vi.useFakeTimers();
         const { channel } = createTransport();
         channel.waitForConfirms.mockReturnValue(new Promise<never>(() => undefined));
-        const result = expect(publishIngestionJob("amqp://unused", job))
+        const result = expect(publishIngestionJob(job))
             .rejects.toEqual(new IngestionPublishError("timeout"));
         await vi.advanceTimersByTimeAsync(10_000);
         await result;
