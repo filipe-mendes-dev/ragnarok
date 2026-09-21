@@ -1,10 +1,13 @@
 # RAGnarok Implementation Roadmap
 
-Last updated: 2026-09-07
+Last updated: 2026-09-21
 
 ## Working rule
 
 Complete phases in order. A phase is complete when its observable outcome and verification gate pass. Reranking and visual polish are the first items deferred when schedule pressure appears.
+
+Deferred details and completion conditions live in [todo.md](todo.md). Keep phase
+status here and record new agreed follow-ups there.
 
 ## Phase 0: Repository foundation
 
@@ -28,7 +31,7 @@ Target: Days 1-2
 - [x] Configure Drizzle and committed migrations.
 - [x] Add Better Auth user, account, session, verification, and rate-limit tables.
 - [x] Add the owned document table with source-specific database constraints.
-- [ ] Add the chunk table when ingestion and embedding requirements are implemented.
+- [x] Add chunk and chunk-configuration tables for ingestion; vectors belong to Phase 5.
 - [ ] Add conversation, message, retrieval-run, and candidate tables when the question-answering flow requires them.
 - [ ] Verify database persistence across container restarts.
 
@@ -56,7 +59,7 @@ Target: Day 3
 - [x] Submit and list owned plain-text documents.
 - [ ] Edit submitted plain-text documents.
 - [x] Upload PDFs directly to object storage with a configurable file-size limit.
-- [ ] Enforce extracted-content limits when PDF parsing is implemented.
+- [x] Enforce PDF page, extracted-content, download-size, and processing-time limits.
 - [x] Store original PDF bytes in object storage and metadata in PostgreSQL.
 - [ ] Delete owned documents.
 - [x] Expose document state in the UI.
@@ -69,11 +72,48 @@ Failure test: make object storage unavailable and verify no falsely completed do
 
 Target: Day 4
 
-- [ ] Define a minimal versioned ingestion-job DTO.
-- [ ] Enqueue jobs after source creation or text editing.
-- [ ] Implement extraction, deterministic chunking, and chunk metadata.
-- [ ] Add bounded retries, backoff, timeouts, structured logs, and safe failure state.
-- [ ] Make duplicate execution and chunk replacement idempotent.
+Delivery priority: the text/PDF ingestion path works. Proceed to Phase 5 embeddings
+and retrieval, then grounded answers, before expanding edge-case work. Keep focused
+checks for each change; defer broader fault testing until the product flow is complete.
+Outbox/reconciliation, durable retry exhaustion, retry UI, and shutdown supervision
+remain tracked reliability follow-ups before public deployment. They do not block
+starting Phase 5. Text editing/re-ingestion remains a separate unfinished V1 feature.
+Unchecked items below are retained as follow-ups, not represented as completed work.
+
+Work through the following steps in order. RabbitMQ replaces the original BullMQ plan; Redis is disabled by default. Text submission now saves the source, commits queued state, and publishes to the Python worker. Verified PDF uploads now publish too. Dependency, migration, and infrastructure commands are run by the user as part of the learning flow, then inspected and verified.
+
+- [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
+- [x] Establish a baseline of 1,000 Unicode code points and 150 target overlap; sample PDF chunks reviewed. Retrieval-based tuning remains in the backlog.
+- [x] Generate and inspect `worker/uv.lock` with uv; confirm the installed LangChain splitter version.
+- [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
+- [x] Install pytest and verify the existing suite under the configured runner.
+- [x] Add the chunk/configuration schema and generated migration; verify constraints against a fresh Testcontainers database.
+- [x] Install Psycopg and Python Testcontainers; verify the source/configuration repositories.
+- [x] Implement and verify text ingestion, revision guards, atomic chunk replacement, and advisory-lock coordination.
+- [x] Install aio-pika and verify the RabbitMQ consumer integration test.
+- [x] Implement PostgreSQL text loading, object-storage PDF loading, bounded extraction, and the ingestion service.
+- [x] Install pypdf and verify extraction plus page-aware chunking on synthetic PDF fixtures, including blank pages, encryption, malformed input, and deterministic global ordinals.
+- [x] Adapt the ingestion service to database source type and atomically persist PDF page metadata; test ownership, revisions, duplicate delivery, and safe extraction failures with the storage boundary replaced in tests.
+- [x] Install boto3 and verify the S3 loader against disposable MinIO through the real worker.
+- [x] Enforce one overall 30-second deadline for sequential PDF download, extraction, and chunking in one terminable child process.
+- [x] Disable Redis by default and remove the web application's Redis requirement.
+- [x] Add RabbitMQ configuration and a Python consumer client.
+- [x] Install amqplib and connect the TypeScript publisher to text submission.
+- [x] Configure matching queue names through required environment variables in both runtimes.
+- [x] Validate versioned messages in Python and verify real TypeScript-to-Python delivery.
+- [ ] Add shared valid/invalid contract fixtures across both runtimes; see [backlog](todo.md).
+- [x] Publish ingestion messages after text submission.
+- [x] Publish after verified PDF completion, with safe repeat/concurrent completion.
+- [ ] Publish after revision-safe text editing.
+- [x] Add a thin Python RabbitMQ consumer that delegates to the ingestion service and acknowledges committed text outcomes.
+- [ ] Recover durable pending publication and abandoned processing after failures.
+- [x] Add three attempts per delivery, backoff, operation deadlines, diagnostic key/value logs, and safe expected-failure state.
+- [ ] Persist retry exhaustion across restarts and standardize cross-runtime JSON logs; see [backlog](todo.md).
+- [x] Make duplicate execution and chunk replacement idempotent with revision guards and atomic persistence; service tests cover redelivery and rollback.
+
+Local text/PDF flow was confirmed working by the user on 2026-09-21 after applying
+migrations and switching PDF extraction to layout mode. This does not establish
+production readiness or complete the deferred reliability work.
 
 Gate: documents move visibly through queued, processing, completed, and failed states.
 
@@ -132,6 +172,8 @@ Target: Day 9
 - [ ] Display filters, models, prompt version, candidates, scores, selected chunks, latencies, tokens, and safe errors.
 - [ ] Correlate answer, trace, request, and logs.
 - [ ] Sanitize all public trace fields.
+- [ ] Agree on operational observability before implementation: shared JSON log fields, severity rules, safe diagnostics, identifiers, and stage durations across TypeScript and Python.
+- [ ] Add OpenTelemetry tracing across publication and worker processing using AMQP headers; keep diagnostic traces separate from persisted user-facing RAG traces.
 
 Gate: a recruiter can inspect the full retrieval-to-generation path from an answer without server access.
 
@@ -150,10 +192,11 @@ Gate: one command produces a repeatable evaluation report with documented limita
 
 Target: Day 11
 
-- [ ] Test provider timeouts, malformed PDFs, Redis loss, worker crashes, and duplicate jobs.
+- [ ] Test provider timeouts, malformed PDFs, RabbitMQ loss, worker crashes, and duplicate jobs.
 - [ ] Add integration tests for authorization, persistence workflows, and state transitions.
 - [ ] Add Playwright coverage for the critical signed-in document-to-answer flow.
 - [ ] Verify structured error and logging behavior.
+- [ ] Test that a controlled ingestion failure can be diagnosed through correlated logs and traces without exposing document content or credentials.
 
 Gate: expected failures reach explicit recoverable or failed states without hanging or silently losing work.
 
@@ -162,10 +205,15 @@ Gate: expected failures reach explicit recoverable or failed states without hang
 Target: Day 12
 
 - [ ] Build separate web and worker targets from one multi-stage Dockerfile.
-- [ ] Add production Compose with Nginx, two identical web containers, worker, PostgreSQL, and Redis.
+- [ ] Add production Compose with Nginx, two identical web containers, worker, PostgreSQL, and RabbitMQ.
 - [ ] Configure internal networking, volumes, runtime secrets, health checks, graceful shutdown, and restart policies.
 - [ ] Configure DNS and HTTPS.
 - [ ] Verify backup and restore steps for durable state.
+- [ ] Choose and configure centralized log, metric, and trace collection/storage within the VPS budget; agree retention, access, and sampling before choosing the backend.
+- [ ] Add an operational dashboard for queue backlog, consumers, ingestion failures/durations, and documents stuck in queued or processing.
+- [ ] Add and exercise actionable alerts, including pending work with no consumer. Document the investigation and recovery steps.
+
+Operational logging, metrics, and tracing are required for V1 deployment. Tool selection is deferred until the ingestion flow works. RabbitMQ's management UI is not completed-job history; PostgreSQL remains authoritative. Durable ingestion-attempt history is a separate decision, not a substitute for telemetry.
 
 Gate: the application is reachable through HTTPS and only Nginx exposes public HTTP ports.
 
@@ -184,3 +232,13 @@ Gate: a merge to `main` passes quality gates, deploys predictably, and leaves a 
 ## Final stop condition
 
 Stop adding features when the deployed application supports private asynchronous ingestion, grounded answers, inspectable citations, an understandable trace, and documented evaluation and deployment. Record unfinished optional work as future work rather than delaying shipment.
+
+## Learning after V1
+
+- Compare alternative Python document extractors on the same PDFs.
+- Learn model calls, structured outputs, and tool calling with LangChain where its components help.
+- Build a bounded document-search agent, then explore LangGraph branching, checkpoints, and human approval when the exercise requires them.
+- Learn tool definitions, validated arguments/results, tool-call execution, and bounded agent loops through that search exercise. Compare structure-aware extraction and agent-directed extraction against the deterministic baseline only after ingestion and retrieval evaluation work.
+- Evaluate per-user chunking settings before adding alternative active chunk sets.
+
+These exercises do not block Phase 4 or expand the V1 release gate.

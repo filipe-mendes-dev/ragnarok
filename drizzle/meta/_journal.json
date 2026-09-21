@@ -29,6 +29,13 @@
       "when": 1788738352258,
       "tag": "0003_windy_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788927928479,
+      "tag": "0004_high_sentry",
+      "breakpoints": true
     }
   ]
 }

@@ -61,11 +61,29 @@ export function createDocumentRepository(databaseClient: Database) {
         return record ?? null;
     }
 
+    async function markQueuedForUser(
+        userId: string,
+        documentId: string,
+        revision: number,
+    ): Promise<DocumentRow | null> {
+        const [record] = await databaseClient.update(document)
+            .set({ status: "queued", processingError: null })
+            .where(and(
+                eq(document.id, documentId),
+                eq(document.userId, userId),
+                eq(document.revision, revision),
+                eq(document.status, "uploaded"),
+            ))
+            .returning();
+        return record ?? null;
+    }
+
     return {
         findByIdForUser,
         listForUser,
         insert,
         markUploadedForUser,
+        markQueuedForUser,
     };
 }
 

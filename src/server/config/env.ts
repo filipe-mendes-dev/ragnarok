@@ -4,7 +4,6 @@ import { DEFAULT_PDF_MAX_SIZE_BYTES } from "@/shared/documents";
 
 export interface ServerEnvironment {
     DATABASE_URL: string;
-    REDIS_URL: string;
     S3_ENDPOINT: string;
     S3_REGION: string;
     S3_BUCKET: string;
@@ -16,7 +15,6 @@ export interface ServerEnvironment {
 
 const serverEnvironmentSchema = z.object({
     DATABASE_URL: z.url(),
-    REDIS_URL: z.url(),
     S3_ENDPOINT: z.url(),
     S3_REGION: z.string().min(1),
     S3_BUCKET: z.string().min(1),
@@ -31,6 +29,17 @@ const serverEnvironmentSchema = z.object({
 });
 
 let cachedServerEnvironment: ServerEnvironment | undefined;
+
+export function getRabbitmqUrl(): string {
+    const result = z.url().refine((value) => {
+        const protocol = new URL(value).protocol;
+        return protocol === "amqp:" || protocol === "amqps:";
+    }).safeParse(process.env.RABBITMQ_URL);
+    if (!result.success) {
+        throw new Error("Set RABBITMQ_URL to an amqp:// or amqps:// URL");
+    }
+    return result.data;
+}
 
 export function parseServerEnvironment(environment: NodeJS.ProcessEnv): ServerEnvironment {
     const result = serverEnvironmentSchema.safeParse(environment);
@@ -50,4 +59,13 @@ export function getServerEnvironment(): ServerEnvironment {
     cachedServerEnvironment ??= parseServerEnvironment(process.env);
 
     return cachedServerEnvironment;
+}
+
+export function getIngestionQueueNames(): { ingestion: string; rejected: string } {
+    const ingestion = process.env.INGESTION_QUEUE_NAME;
+    const rejected = process.env.INGESTION_REJECTED_QUEUE_NAME;
+    if (!ingestion?.trim() || !rejected?.trim() || ingestion === rejected) {
+        throw new Error("Set distinct, nonblank INGESTION_QUEUE_NAME and INGESTION_REJECTED_QUEUE_NAME");
+    }
+    return { ingestion, rejected };
 }

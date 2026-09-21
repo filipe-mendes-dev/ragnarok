@@ -18,6 +18,7 @@ import {
     createDocumentUploadService,
 } from '@/server/modules/documents/document-upload-service';
 import { createDocumentService } from '@/server/modules/documents/document-service';
+import { IngestionPublishError } from '@/server/queue/rabbitmq-ingestion-publisher';
 import { createS3DocumentObjectStorage } from '@/server/storage/s3-document-object-storage';
 import { s3Bucket, s3Client } from '@/server/storage/s3-client';
 import type {
@@ -62,7 +63,16 @@ export async function createTextDocumentAction(
         throw error;
     }
 
-    await documentService.createTextDocument(user.id, input);
+    try {
+        await documentService.createTextDocument(user.id, input);
+    } catch (error: unknown) {
+        if (error instanceof IngestionPublishError) {
+            return {
+                errorMessage: 'Your document was saved, but queue delivery could not be confirmed. Check Documents before submitting again. Processing may still start.',
+            };
+        }
+        throw error;
+    }
 
     redirect('/documents');
 }
@@ -115,6 +125,12 @@ export async function completePdfUploadAction(
             succeeded: true,
         };
     } catch (error: unknown) {
+        if (error instanceof IngestionPublishError) {
+            return {
+                errorMessage: 'Your PDF was saved, but queue delivery could not be confirmed. Check Documents before uploading again. Processing may still start.',
+                succeeded: false,
+            };
+        }
         if (
             error instanceof ZodError ||
             error instanceof DocumentUploadError

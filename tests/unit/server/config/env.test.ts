@@ -1,12 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { parseServerEnvironment } from '@/server/config/env';
+import { getRabbitmqUrl, parseServerEnvironment } from '@/server/config/env';
+
+describe('getRabbitmqUrl', () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it('accepts the AMQP URL used by the publisher', () => {
+        vi.stubEnv('RABBITMQ_URL', 'amqp://localhost:5672/');
+        expect(getRabbitmqUrl()).toBe('amqp://localhost:5672/');
+    });
+
+    it('rejects HTTP URLs without exposing their credentials', () => {
+        vi.stubEnv('RABBITMQ_URL', 'https://user:private-password@localhost');
+        expect(getRabbitmqUrl).toThrow('Set RABBITMQ_URL to an amqp:// or amqps:// URL');
+    });
+});
 
 function createValidEnvironment(): NodeJS.ProcessEnv {
     return {
         NODE_ENV: 'test',
         DATABASE_URL: 'postgresql://ragnarok:password@localhost:5432/ragnarok',
-        REDIS_URL: 'redis://localhost:6379',
         S3_ENDPOINT: 'http://localhost:9000',
         S3_REGION: 'us-east-1',
         S3_BUCKET: 'ragnarok-documents',

@@ -72,3 +72,4 @@
 
 - Respond in English unless Portuguese is explicitly requested.
 - Report changes file by file with the reason and verification performed.
+- Python work is also a teaching task. Before creating or modifying Python files, read `worker/AGENTS.md` and follow its code-walkthrough requirements, including for Python files outside `worker/`. A summary of file responsibilities does not satisfy this requirement.

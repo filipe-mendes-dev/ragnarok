@@ -9,6 +9,9 @@ import {
     type StartPdfUploadInput,
 } from "@/shared/documents";
 
+import type { IngestionJobInput } from "@/server/modules/ingestion/ingestion-input";
+import { publishIngestionJob } from "@/server/queue/rabbitmq-ingestion-publisher";
+
 const UPLOAD_URL_LIFETIME_SECONDS = 5 * 60;
 
 const DOCUMENT_UPLOAD_ERROR_MESSAGES = {
@@ -38,6 +41,7 @@ function createPdfStorageKey(userId: string, documentId: string): string {
 export function createDocumentUploadService(
     repository: DocumentRepository,
     objectStorage: DocumentObjectStorage,
+    publish: (job: IngestionJobInput) => Promise<void> = publishIngestionJob,
 ) {
     async function startPdfUpload(
         userId: string,
@@ -82,54 +86,38 @@ export function createDocumentUploadService(
         userId: string,
         documentId: string,
     ): Promise<DocumentRow> {
-        const document = await repository.findByIdForUser(userId, documentId);
-
+        let document = await repository.findByIdForUser(userId, documentId);
         if (!document || document.sourceType !== "pdf" || !document.storageKey) {
             throw new DocumentUploadError("upload_not_found");
         }
-
-        if (document.status === "uploaded") {
+        if (["queued", "processing", "completed", "failed"].includes(document.status)) {
             return document;
         }
+        if (document.status === "uploading") {
+            const metadata = await objectStorage.getObjectMetadata(document.storageKey);
+            if (!metadata) throw new DocumentUploadError("object_not_found");
+            if (metadata.contentType !== PDF_MIME_TYPE || metadata.sizeBytes !== document.sizeBytes) {
+                throw new DocumentUploadError("metadata_mismatch");
+            }
+            document = await repository.markUploadedForUser(userId, documentId)
+                ?? await repository.findByIdForUser(userId, documentId);
+        }
+        if (!document) throw new DocumentUploadError("upload_not_found");
+        if (["queued", "processing", "completed", "failed"].includes(document.status)) {
+            return document;
+        }
+        if (document.status !== "uploaded") throw new DocumentUploadError("invalid_state");
 
-        if (document.status !== "uploading") {
+        const queued = await repository.markQueuedForUser(userId, documentId, document.revision);
+        if (!queued) {
+            const current = await repository.findByIdForUser(userId, documentId);
+            if (current && ["queued", "processing", "completed", "failed"].includes(current.status)) {
+                return current;
+            }
             throw new DocumentUploadError("invalid_state");
         }
-
-        const metadata = await objectStorage.getObjectMetadata(
-            document.storageKey,
-        );
-
-        if (!metadata) {
-            throw new DocumentUploadError("object_not_found");
-        }
-
-        if (
-            metadata.contentType !== PDF_MIME_TYPE ||
-            metadata.sizeBytes !== document.sizeBytes
-        ) {
-            throw new DocumentUploadError("metadata_mismatch");
-        }
-
-        const uploadedDocument = await repository.markUploadedForUser(
-            userId,
-            documentId,
-        );
-
-        if (uploadedDocument) {
-            return uploadedDocument;
-        }
-
-        const currentDocument = await repository.findByIdForUser(
-            userId,
-            documentId,
-        );
-
-        if (currentDocument?.status === "uploaded") {
-            return currentDocument;
-        }
-
-        throw new DocumentUploadError("invalid_state");
+        await publish({ version: 1, documentId, revision: queued.revision, userId });
+        return queued;
     }
 
     return {
