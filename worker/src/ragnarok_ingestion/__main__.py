@@ -5,10 +5,11 @@ import logging
 import os
 
 from ragnarok_ingestion.consumer import consume_ingestion
+from ragnarok_ingestion.diagnostics import safe_error_details
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     try:
         database_url = os.environ["DATABASE_URL"]
         rabbitmq_url = os.environ["RABBITMQ_URL"]
@@ -19,9 +20,9 @@ def main() -> None:
         asyncio.run(consume_ingestion(rabbitmq_url, database_url))
     except KeyboardInterrupt:
         logging.info("Worker stopped")
-    except Exception:
+    except Exception as error:
         # Driver exceptions can include connection credentials or source values.
-        logging.error("Worker stopped after an infrastructure or processing error; unacknowledged work can be redelivered")
+        logging.error("event=worker_stopped error=%s unacknowledged_work=redeliverable", safe_error_details(error))
         raise SystemExit(1) from None
 
 

@@ -41,7 +41,9 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[ExtractedPage]:
                 raise PdfExtractionError("PDF must contain at most 100 pages.")
 
             for page_number, page in enumerate(reader.pages, start=1):
-                text = page.extract_text()
+                if page.get_contents() is None:
+                    continue
+                text = page.extract_text(extraction_mode="layout")
                 character_count += len(text)
                 if character_count > MAX_EXTRACTED_CHARACTERS:
                     raise PdfExtractionError("PDF text must not exceed 100,000 characters.")
