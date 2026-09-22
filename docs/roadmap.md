@@ -95,7 +95,7 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [x] Install pypdf and verify extraction plus page-aware chunking on synthetic PDF fixtures, including blank pages, encryption, malformed input, and deterministic global ordinals.
 - [x] Adapt the ingestion service to database source type and atomically persist PDF page metadata; test ownership, revisions, duplicate delivery, and safe extraction failures with the storage boundary replaced in tests.
 - [x] Install boto3 and verify the S3 loader against disposable MinIO through the real worker.
-- [x] Enforce one overall 30-second deadline for sequential PDF download, extraction, and chunking in one terminable child process.
+- [x] Enforce a 30-second deadline for PDF download and extraction in one terminable child process. Phase 5 token-aware chunking and embedding run in the parent afterward.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
 - [x] Add RabbitMQ configuration and a Python consumer client.
 - [x] Install amqplib and connect the TypeScript publisher to text submission.
@@ -123,8 +123,8 @@ Failure test: terminate the worker mid-job, restart it, and verify a retry canno
 
 Target: Day 5
 
-- [ ] Select the embedding provider, model, dimensions, and similarity metric.
-- [ ] Generate chunk embeddings during ingestion and persist them in pgvector.
+- [x] Select local BGE-small English through FastEmbed/ONNX Runtime, 384 dimensions, and cosine similarity for the normalized vectors.
+- [x] Generate token-aware chunk embeddings during text/PDF ingestion and atomically persist vectors, model identity, and completion in pgvector. Existing chunks require explicit re-ingestion.
 - [ ] Embed user queries and retrieve top-k candidates.
 - [ ] Apply `userId` and selected-document filters inside the retrieval query.
 - [ ] Capture embedding and vector-search latency and scores.

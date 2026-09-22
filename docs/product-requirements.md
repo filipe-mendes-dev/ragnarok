@@ -105,7 +105,7 @@ V1 has no organizations, teams, invitations, or workspace-management interface. 
 - **NFR-10:** The system targets low-to-moderate portfolio-demo traffic on one VPS with approximately 4 CPU cores and 8 GB RAM.
 - **NFR-11:** Typical question latency should be approximately five seconds or less when external providers respond normally.
 - **NFR-12:** The default PDF upload limit is 10 MB and is configurable without a code change.
-- **NFR-13:** Parsing also uses bounded execution and extracted-content limits because compressed file size alone is not a sufficient safety boundary.
+- **NFR-13:** PDF parsing runs in a subprocess with a deadline. Total page and extracted-character policy limits are optional; compressed file size alone does not bound parser memory, so deployment must enforce process/container resource limits.
 
 ### Observability and maintainability
 
@@ -232,12 +232,13 @@ The V1 product is complete when a recruiter can:
 
 The project stops expanding when these criteria are met.
 
-Authentication uses Better Auth. The current PDF limits are 100 pages and 100,000
-extracted Unicode characters, with a 30-second PDF processing deadline.
+Authentication uses Better Auth. PDFs retain a 10 MB default upload cap and a
+30-second processing deadline. There is no default page or total extracted-character
+ceiling. Operators may set `PDF_MAX_PAGES` and `PDF_MAX_EXTRACTED_CHARACTERS`.
 
 ## Open product decisions
 
-- Embedding and generation providers and models
+- Generation provider/model; the initial embedding implementation uses local BGE-small English
 - Production object-storage provider
 - Whether reranking fits before the deployment milestone
 - Whether the public deployment offers self-service accounts or a controlled demo account

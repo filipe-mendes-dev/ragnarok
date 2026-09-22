@@ -1,7 +1,8 @@
 # Python ingestion worker
 
 The worker consumes RabbitMQ messages and ingests queued text and PDF documents. It loads
-an owned revision from PostgreSQL, splits it with LangChain, and saves its chunks.
+an owned revision from PostgreSQL, splits it using BGE token counts, generates local
+CPU embeddings, and atomically saves chunks, vectors, and completion.
 Next.js publishes new text submissions and verified PDF upload completions.
 Failure recovery remains unfinished; see the [backlog](../docs/todo.md).
 
@@ -13,10 +14,11 @@ From `worker`, update the environment and uv-generated lockfile:
 uv sync
 ```
 
-`pyproject.toml` now declares `aio-pika` and Pydantic directly. aio-pika speaks the
+`pyproject.toml` declares `aio-pika` and Pydantic directly. aio-pika speaks the
 RabbitMQ protocol and handles connection I/O. Pydantic validates incoming JSON,
 like Zod in TypeScript. Neither the standard library nor Psycopg provides an AMQP
-client. uv owns `uv.lock`; do not edit it manually.
+client. uv owns `uv.lock`; do not edit it manually. Provision the local embedding
+model using the command in "Local embeddings" below before starting the worker.
 
 Apply committed migrations with `npm run db:migrate` from the repository root
 before starting the worker. The worker never creates or migrates tables.
@@ -65,7 +67,7 @@ does not move existing messages. No dependency installation is needed for this c
 ## Follow one message through the files
 
 1. `__main__.py` reads `DATABASE_URL` and `RABBITMQ_URL`, configures logging, and
-   starts the consumer. It contains no ingestion workflow. Missing variables
+   loads one local embedding model, and starts the consumer. It contains no ingestion workflow. Missing variables
    produce a short startup error.
 2. `consumer.py` connects to RabbitMQ and asks for one unacknowledged message at a
    time with `prefetch_count=1`. It validates the message, calls the service, then
@@ -77,8 +79,8 @@ does not move existing messages. No dependency installation is needed for this c
    method with Pydantic. `@classmethod` passes the model class as `cls`. These methods
    run during validation, not when the worker accesses an already validated field.
 4. `ingestion_service.py` owns the workflow and its two database transactions. It
-   first commits `processing`, then calls the chunker outside a transaction. Its
-   final transaction saves both replacement chunks and `completed`.
+   first commits `processing`, then parses, chunks, and embeds outside a transaction.
+   Its final transaction saves replacement chunks, vectors, model identity, and `completed`.
 5. `document_repository.py` contains ownership/revision-filtered SQL, status updates,
    and the advisory-lock query. A successful conditional UPDATE locks the document
    row until its transaction ends. That prevents an edit between checking the
@@ -88,7 +90,8 @@ does not move existing messages. No dependency installation is needed for this c
    changing its historical settings.
 7. `chunk_repository.py` deletes previous chunks and inserts the replacement set.
    Both operations use the service's transaction. `executemany` executes the same
-   parameterized insert with each chunk's values. Text chunks have a null page number.
+   parameterized insert with each chunk's values and its vector cast to pgvector.
+   Text chunks have a null page number.
 8. `database.py` opens a dedicated Psycopg connection with a five-second connection
    timeout, ten-second statement timeout, and three-second lock timeout.
 9. `chunking.py` remains the pure LangChain splitter. It knows nothing about RabbitMQ
@@ -98,7 +101,7 @@ The consumer uses `async def` because broker operations can wait without blockin
 other connection work. `await` suspends that coroutine until an operation finishes.
 `asyncio.run` starts Python's event loop, which manages those waits.
 `await asyncio.to_thread(ingest_document, ...)` runs our synchronous database
-and chunking function on another thread. This lets the event loop handle RabbitMQ
+and embedding function on another thread. This lets the event loop handle RabbitMQ
 heartbeats. It does not make several documents run at once; the consumer still
 awaits each result before receiving the next job.
 
@@ -137,8 +140,9 @@ Deferred recovery, retry, supervision, and fault-test work is tracked in the
 [backlog](../docs/todo.md). It does not block Phase 5, but deployment reliability
 remains unfinished.
 
-The current attempt limit resets after restart. PDF downloading, extraction, and chunking share
-one subprocess deadline, but this does not provide full crash recovery.
+The current attempt limit resets after restart. PDF downloading and extraction share
+one subprocess deadline. Token-aware chunking and embedding run in the parent after
+extraction; they are not covered by the PDF deadline. This does not provide full crash recovery.
 Next.js publishes persistent messages and waits for publisher confirms.
 
 ## Tests and the meaning of yield
@@ -190,15 +194,85 @@ of wrapping the service in the repository tests' rollback fixture.
 
 ## Chunking settings
 
-The initial defaults are 1,000 Unicode code points and a target overlap of 150.
-These are trial values, not measured retrieval optima. Python `len` counts code
-points, not UTF-8 bytes, JavaScript UTF-16 units, or model tokens.
+Ingestion uses 384 BGE content tokens and a target overlap of 48. These are trial
+values, not measured retrieval optima. The standalone character-splitting example
+retains its original settings. Python `len` counts code points; production ingestion
+supplies the model tokenizer's counting function instead.
 
 The splitter prefers paragraphs, lines, spaces, then characters. It normalizes line
 endings and strips surrounding whitespace. Overlap may be smaller at boundaries.
 Retained separators count toward the splitting limit before trimming, so very small
 limits can split otherwise short words. Meaningful repeated passages remain present.
-Change `CHUNKING_METHOD` when normalization or splitting behavior changes.
+Change the relevant method version when normalization or splitting behavior changes.
+New ingestion stores `recursive-bge-small-en-v1.5-token-v1` in `chunk_config` so its
+token counts are distinguishable from legacy character counts.
+
+## Local embeddings
+
+Text and PDF ingestion now use `chunk_for_embedding`, which supplies the BGE
+tokenizer to the splitter: 384 content tokens and
+a target overlap of 48 tokens. Complete inputs, including special tokens and the
+query instruction where applicable, must fit the model's 512-token limit.
+Oversized inputs raise an error instead of being silently truncated.
+
+The English model is `BAAI/bge-small-en-v1.5`, using Qdrant's quantized ONNX
+artifact at revision `52398278842ec682c6f32300af41344b1c0b0bb2`. It produces
+384-dimensional, normalized vectors. Vector dimensions and input token limits
+are independent properties. This is an English baseline, not a multilingual
+model selection or a measured VPS performance claim.
+
+FastEmbed handles CPU inference and model postprocessing through ONNX Runtime.
+Tokenizers measures input length using the matching tokenizer. Hugging Face Hub
+provides the `hf` setup command; application inference never downloads files.
+These packages do not require a Qdrant server or a GPU.
+
+After `uv sync`, provision the model once from `worker/`:
+
+```bash
+uv run hf download Qdrant/bge-small-en-v1.5-onnx-Q \
+  model_optimized.onnx tokenizer.json config.json \
+  tokenizer_config.json special_tokens_map.json \
+  --revision 52398278842ec682c6f32300af41344b1c0b0bb2 \
+  --local-dir models/bge-small-en-v1.5
+```
+
+Keep this folder out of Git. Copy or mount the same provisioned files on the VPS.
+The loader requires this particular artifact layout and reports missing files;
+it is not a loader for arbitrary ONNX models.
+`EMBEDDING_MODEL_DIR` can override the default folder when starting the worker.
+It must contain the pinned artifact above; the loader does not verify file hashes.
+
+```bash
+uv run python examples/embed_text.py
+uv run python -m pytest tests/unit/ragnarok_ingestion/test_embedding.py -v
+```
+
+The example loads one resident model with two CPU threads, splits and embeds a
+long sample in sequential batches of eight, and embeds a question with BGE's query
+instruction. It reports elapsed times and ranks three passages in memory using
+dot products of normalized vectors, equivalent to cosine similarity. Its assertions
+check normalization and the expected first result. This is a smoke test, not a
+retrieval-quality evaluation or a load benchmark. Run it normally, without `python -O`.
+
+Unit tests use a small deterministic tokenizer and a fake model. They need no model
+download and test token boundaries, preflight rejection, query-prefix accounting,
+and invalid inference results. Run the example as well to exercise the actual model.
+
+Ingestion chunks original source text before inference and atomically persists
+chunks, vectors, model identity, and completion under the existing owner/revision
+checks. One job calls parsing, chunking, and embedding as separate functions; there
+are no durable intermediate checkpoints or extra queues. A failed inference does
+not replace old chunks or mark completed. Safe token-limit rejections mark failed;
+unexpected inference errors preserve the existing unacknowledged-delivery policy.
+
+Apply generated migration `0005_groovy_swordsman.sql` with `npm run db:migrate`
+before restarting the worker. Existing chunks keep null embedding fields; no model
+runs inside a migration and no existing documents are automatically requeued.
+New ingestion writes `embedding vector(384)`, `embedding_model`, and
+`embedding_revision` together. Future retrieval must require a non-null embedding
+and the matching model/revision, in addition to ownership and completed status.
+Re-ingestion starts from retained source text or PDF bytes, not concatenated
+overlapping chunks. Editing/retry UI and query retrieval are still separate work.
 
 ## PostgreSQL topics to learn next
 
@@ -209,17 +283,24 @@ concrete exercise in why several successful individual queries are not sufficien
 
 ## PDF service integration
 
+PDFs keep the default 10 MB upload cap and 30-second child-process deadline.
+There is no default page or total extracted-character ceiling. Optional positive
+`PDF_MAX_PAGES` and `PDF_MAX_EXTRACTED_CHARACTERS` settings can impose policy limits.
+Submitted plain text retains its separate 100,000-character limit.
+The download, extracted pages, and prepared vectors remain in memory. Inference
+runs in batches of eight; no streaming download or disk-spooling workflow is used.
+
 Extraction uses pypdf layout mode, preserving position-based lines and paragraph
 gaps. Pages without content streams are skipped. Layout mode can add spaces and
 does not guarantee correct reading order for columns or tables. Restart the worker
 after code changes; existing chunks require explicit re-ingestion or a new upload.
 
 
-`ingest_document(database_url, job)` selects the owned source in PostgreSQL and calls
-`process_pdf(storage_key, settings)` for PDFs. One child downloads, extracts, and chunks
-in sequence. `load_pdf_from_s3` and `chunk_pdf` are ordinary synchronous helpers.
-Only the storage key/settings travel to the child; PDF bytes stay there. JSON chunks
-return to the parent, where Pydantic validates them before atomic persistence.
+`ingest_document(database_url, job, embedder)` selects the owned source in PostgreSQL
+and calls `process_pdf(storage_key)` for PDFs. One child downloads and extracts text.
+Only the storage key travels to the child; PDF bytes stay there. JSON pages return
+to the parent, where Pydantic validates them before token-aware chunking and
+embedding. Each chunk retains its original page number and a document-wide ordinal.
 
 One 30-second deadline covers the complete child operation, replacing two separate
 30-second stage deadlines. An overdue child is killed and reaped, and the matching
@@ -230,16 +311,24 @@ responsibility. The child has no database work. This is not a memory sandbox.
 
 Run local infrastructure, Next.js, and the worker with the commands above, upload a
 PDF, and refresh Documents. Existing uploaded documents still need completion/recovery;
-worker startup does not backfill them. No dependency or migration changes are needed.
+worker startup does not backfill them. Provision the model and apply the embedding
+migration before starting this version of the worker.
 
 ## Troubleshooting worker failures
+
+`ingestion_rejected` includes the failing `stage` and a JSON-quoted safe `reason`.
+Optional-limit rejections include the observed count and configured limit.
+`pdf_extracted` reports nonempty page count, normalized character count, and elapsed
+PDF-processing time. `embedding_progress` reports completed/total chunks every 80
+chunks and at completion. Progress does not imply persistence: the final transaction
+still saves all chunks, embeddings, and completion together.
 
 Start from `worker/` with `uv run --env-file ../.env worker`. Logs go to stderr
 and include timestamps and event names. Follow `job_received` by document/revision,
 then `ingestion_stage` to see how far execution reached. `job_attempt_failed`
 precedes a retry; `job_failed` and `worker_stopped` identify fatal failures.
 `pdf_child_failed` preserves safe exception details from the PDF subprocess:
-exit code 3 means download failed; exit code 1 means extraction/chunking failed.
+exit code 3 means download failed; exit code 1 means extraction failed.
 `pdf_child_timeout` identifies the overall PDF deadline.
 
 Exception details include class and file/function/line locations, and available

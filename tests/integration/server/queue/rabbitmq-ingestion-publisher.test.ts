@@ -94,6 +94,7 @@ describe("publishIngestionJob", () => {
         const worker = spawn(resolve("worker/.venv/bin/python"), ["-m", "ragnarok_ingestion"], {
             cwd: resolve("worker"),
             env: { ...process.env, DATABASE_URL: inject("databaseUrl"), RABBITMQ_URL: rabbitmqUrl,
+                EMBEDDING_MODEL_DIR: resolve("worker/models/bge-small-en-v1.5"), HF_HUB_OFFLINE: "1",
                 S3_ENDPOINT: storageEndpoint, S3_REGION: "us-east-1", S3_BUCKET: "ingestion-test",
                 S3_ACCESS_KEY_ID: "testuser", S3_SECRET_ACCESS_KEY: "testpassword",
                 S3_FORCE_PATH_STYLE: "true", PDF_MAX_UPLOAD_SIZE_BYTES: sourceType === "oversized" ? "1" : "10485760" },
@@ -150,6 +151,13 @@ describe("publishIngestionJob", () => {
                 { ordinal: 0, text: "Alpha beta gamma delta", pageNumber: 1, revision: 1 },
                 { ordinal: 1, text: "One two three four", pageNumber: 3, revision: 1 },
             ]);
+            for (const chunk of chunks) {
+                expect(chunk.embeddingModel).toBe("BAAI/bge-small-en-v1.5");
+                expect(chunk.embeddingRevision).toBe("Qdrant/bge-small-en-v1.5-onnx-Q@52398278842ec682c6f32300af41344b1c0b0bb2");
+                expect(chunk.embedding).toHaveLength(384);
+                expect(chunk.embedding?.every(Number.isFinite)).toBe(true);
+                expect(chunk.embedding?.reduce((sum, value) => sum + value * value, 0)).toBeCloseTo(1, 5);
+            }
         } finally {
             worker.kill("SIGINT");
             const forceStop = setTimeout(() => worker.kill("SIGKILL"), 3000);

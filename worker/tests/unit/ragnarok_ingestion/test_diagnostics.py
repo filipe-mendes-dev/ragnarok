@@ -3,7 +3,6 @@ import json
 from botocore.exceptions import ClientError
 import pytest
 
-from ragnarok_ingestion.chunking import ChunkingSettings
 from ragnarok_ingestion.diagnostics import safe_error_details
 from ragnarok_ingestion.pdf_processing import process_pdf
 from ragnarok_ingestion.s3_source import PdfDownloadError
@@ -37,7 +36,7 @@ def test_child_reports_missing_configuration_without_object_key(
     monkeypatch.setenv("PDF_MAX_UPLOAD_SIZE_BYTES", "10485760")
 
     with pytest.raises(PdfDownloadError):
-        process_pdf("private-object-key", ChunkingSettings())
+        process_pdf("private-object-key")
 
     assert "event=pdf_child_failed" in caplog.text
     assert "S3_FORCE_PATH_STYLE" in caplog.text

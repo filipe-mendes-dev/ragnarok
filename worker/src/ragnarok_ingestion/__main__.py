@@ -3,9 +3,11 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from ragnarok_ingestion.consumer import consume_ingestion
 from ragnarok_ingestion.diagnostics import safe_error_details
+from ragnarok_ingestion.embedding import DEFAULT_MODEL_DIRECTORY, load_local_embedder
 
 
 def main() -> None:
@@ -17,7 +19,11 @@ def main() -> None:
         raise SystemExit("Set DATABASE_URL and RABBITMQ_URL before starting the worker") from None
 
     try:
-        asyncio.run(consume_ingestion(rabbitmq_url, database_url))
+        model_directory = Path(os.environ.get("EMBEDDING_MODEL_DIR", str(DEFAULT_MODEL_DIRECTORY)))
+        logging.info("event=embedding_model_loading")
+        embedder = load_local_embedder(model_directory)
+        logging.info("event=embedding_model_ready")
+        asyncio.run(consume_ingestion(rabbitmq_url, database_url, embedder))
     except KeyboardInterrupt:
         logging.info("Worker stopped")
     except Exception as error:
