@@ -72,4 +72,13 @@
 
 - Respond in English unless Portuguese is explicitly requested.
 - Report changes file by file with the reason and verification performed.
-- Python work is also a teaching task. Before creating or modifying Python files, read `worker/AGENTS.md` and follow its code-walkthrough requirements, including for Python files outside `worker/`. A summary of file responsibilities does not satisfy this requirement.
+- For both TypeScript and Python, briefly explain new implementation decisions and non-obvious logic. Justify each new dependency, abstraction, or mechanism; do not repeat explanations for familiar or unchanged behavior.
+- Before changing Python, read `worker/AGENTS.md`. Short explanations replace exhaustive line-by-line walkthroughs unless requested.
+
+## Efficient development
+
+- Build simple, functional UI. Do not refine visual design or run extensive screenshot/viewport checks unless requested or needed to diagnose a concrete defect.
+- Read focused file sections, reuse context, and inspect diffs instead of repeatedly dumping full files. Keep tool output bounded and show only relevant failures or summaries.
+- Run affected tests and the relevant final checks once. Repeat only after meaningful changes, failures, or unresolved concerns; do not add redundant test layers.
+- Preserve authorization, persistence, failure-handling, and other correctness checks. Efficiency must not hide failures or skip required verification.
+- Keep progress updates and final reports concise. Explain decisions rather than narrating routine tool calls.

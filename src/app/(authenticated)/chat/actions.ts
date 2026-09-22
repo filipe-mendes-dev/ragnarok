@@ -13,6 +13,7 @@ export async function sendMessageAction(input: SendMessageInput): Promise<ChatAc
         revalidatePath("/chat", "layout");
         return { errorMessage: null };
     } catch (error: unknown) {
+        revalidatePath("/chat", "layout");
         return { errorMessage: error instanceof ZodError ? error.issues[0]?.message ?? "Invalid message" : error instanceof ChatError ? error.message : "Could not save your message. Please retry." };
     }
 }

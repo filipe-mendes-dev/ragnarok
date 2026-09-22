@@ -1,0 +1,177 @@
+{
+  "benchmark": "synthetic-ranking-v1",
+  "model": "Qdrant/bge-small-en-v1.5-onnx-Q@52398278842ec682c6f32300af41344b1c0b0bb2",
+  "sourceRecallAt5": 1,
+  "meanReciprocalRank": 1,
+  "results": [
+    {
+      "question": "If I cancel an annual plan, when do I lose access?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 23,
+      "retrievedSources": [
+        "billing",
+        "retention",
+        "billing",
+        "refunds",
+        "refunds"
+      ]
+    },
+    {
+      "question": "Can a new annual customer get their money back, and how long does payment take?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 19,
+      "retrievedSources": [
+        "refunds",
+        "billing",
+        "billing",
+        "refunds",
+        "support"
+      ]
+    },
+    {
+      "question": "I was charged twice. Can I ask for a refund after the first month?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 19,
+      "retrievedSources": [
+        "refunds",
+        "refunds",
+        "billing",
+        "billing",
+        "uploads"
+      ]
+    },
+    {
+      "question": "How long am I locked out after entering the wrong password five times?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 16,
+      "retrievedSources": [
+        "security",
+        "api",
+        "billing",
+        "security",
+        "uploads"
+      ]
+    },
+    {
+      "question": "What can I do if I lose my two-factor authentication device?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 17,
+      "retrievedSources": [
+        "security",
+        "security",
+        "uploads",
+        "refunds",
+        "billing"
+      ]
+    },
+    {
+      "question": "How do I download records as CSV, and when does the download link expire?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 17,
+      "retrievedSources": [
+        "exports",
+        "exports",
+        "billing",
+        "uploads",
+        "uploads"
+      ]
+    },
+    {
+      "question": "Can I restore a project that I deleted two weeks ago?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 15,
+      "retrievedSources": [
+        "retention",
+        "uploads",
+        "security",
+        "api",
+        "exports"
+      ]
+    },
+    {
+      "question": "What should my client do after receiving HTTP 429?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 17,
+      "retrievedSources": [
+        "api",
+        "uploads",
+        "api",
+        "exports",
+        "support"
+      ]
+    },
+    {
+      "question": "What does RAG-204 mean?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 16,
+      "retrievedSources": [
+        "api",
+        "api",
+        "refunds",
+        "retention",
+        "security"
+      ]
+    },
+    {
+      "question": "Can I upload a scanned PDF without selectable text?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 32,
+      "retrievedSources": [
+        "uploads",
+        "uploads",
+        "exports",
+        "api",
+        "exports"
+      ]
+    },
+    {
+      "question": "When can I contact standard support, and what happens for an overnight critical outage?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 19,
+      "retrievedSources": [
+        "support",
+        "support",
+        "security",
+        "billing",
+        "uploads"
+      ]
+    },
+    {
+      "question": "What is the cancellation policy, and how long are invoices kept after account closure?",
+      "sourceRecallAt5": 1,
+      "reciprocalRank": 1,
+      "totalMs": 17,
+      "retrievedSources": [
+        "retention",
+        "billing",
+        "refunds",
+        "refunds",
+        "billing"
+      ]
+    },
+    {
+      "question": "Does the service offer a student discount?",
+      "sourceRecallAt5": null,
+      "reciprocalRank": 0,
+      "totalMs": 13,
+      "retrievedSources": [
+        "refunds",
+        "support",
+        "billing",
+        "refunds",
+        "exports"
+      ]
+    }
+  ]
+}

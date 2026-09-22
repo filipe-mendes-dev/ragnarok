@@ -38,6 +38,18 @@ class LocalEmbedder:
     model: EmbeddingModel
 
 
+class DocumentEmbedder(Protocol):
+    tokenizer: Tokenizer
+    model: EmbeddingModel
+
+
+def load_tokenizer(model_directory: Path) -> Tokenizer:
+    tokenizer = Tokenizer.from_file(str(model_directory / "tokenizer.json"))
+    tokenizer.no_truncation()
+    tokenizer.no_padding()
+    return tokenizer
+
+
 def load_local_embedder(model_directory: Path) -> LocalEmbedder:
     """Load one resident CPU model from a provisioned directory, without downloads."""
     for filename in (
@@ -46,9 +58,7 @@ def load_local_embedder(model_directory: Path) -> LocalEmbedder:
     ):
         if not (model_directory / filename).is_file():
             raise FileNotFoundError(f"Missing model file: {filename}. Follow worker/README.md setup.")
-    tokenizer = Tokenizer.from_file(str(model_directory / "tokenizer.json"))
-    tokenizer.no_truncation()
-    tokenizer.no_padding()
+    tokenizer = load_tokenizer(model_directory)
     model = TextEmbedding(
         model_name=MODEL_NAME,
         specific_model_path=str(model_directory),
@@ -86,7 +96,7 @@ def validate_embedding_input(tokenizer: Tokenizer, text: str) -> None:
         raise EmbeddingInputError("Embedding input exceeds 512 tokens; split it before embedding")
 
 
-def embed_documents(embedder: LocalEmbedder, texts: list[str]) -> list[list[float]]:
+def embed_documents(embedder: DocumentEmbedder, texts: list[str]) -> list[list[float]]:
     """Validate the complete request before running small sequential batches."""
     for text in texts:
         validate_embedding_input(embedder.tokenizer, text)

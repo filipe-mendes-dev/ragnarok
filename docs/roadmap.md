@@ -125,9 +125,9 @@ Target: Day 5
 
 - [x] Select local BGE-small English through FastEmbed/ONNX Runtime, 384 dimensions, and cosine similarity for the normalized vectors.
 - [x] Generate token-aware chunk embeddings during text/PDF ingestion and atomically persist vectors, model identity, and completion in pgvector. Existing chunks require explicit re-ingestion.
-- [ ] Embed user queries and retrieve top-k candidates.
-- [ ] Apply `userId` and selected-document filters inside the retrieval query.
-- [ ] Capture embedding and vector-search latency and scores.
+- [x] Embed standalone queries through the shared resident Python model service and retrieve five exact cosine candidates.
+- [x] Apply ownership, selected documents, completed status, current revision, and compatible embedding filters inside retrieval queries.
+- [x] Persist retrieval timings, cosine scores, evidence snapshots, and safe failures; show them in chat.
 
 Gate: a deterministic test corpus retrieves the expected owned document in top-k.
 
@@ -168,7 +168,7 @@ Gate: selected context is bounded, inspectable, and does not contain unexplained
 
 Target: Day 9
 
-- [ ] Persist one retrieval run per question.
+- [x] Persist one retrieval run per question, with retry execution identity and generation explicitly deferred.
 - [ ] Display filters, models, prompt version, candidates, scores, selected chunks, latencies, tokens, and safe errors.
 - [ ] Correlate answer, trace, request, and logs.
 - [ ] Sanitize all public trace fields.
@@ -181,7 +181,7 @@ Gate: a recruiter can inspect the full retrieval-to-generation path from an answ
 
 Target: Day 10
 
-- [ ] Create 15-30 gold questions against a controlled corpus.
+- [ ] Expand the initial synthetic ranking benchmark of 13 questions across eight documents to 15-30 representative gold questions.
 - [ ] Measure expected-source retrieval, recall at k, citations, abstention, latency, and token use.
 - [ ] Produce a readable command-line or page summary.
 - [ ] Keep manual and LLM-judge results explicitly distinguished.

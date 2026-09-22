@@ -12,6 +12,8 @@ import { createDocumentService } from "@/server/modules/documents/document-servi
 import { createIntegrationDatabase } from "../../support/database";
 import { createUserSeeder } from "../../support/seeders/users";
 import { readPersistedDocument } from "../../support/read-documents";
+import { startEmbeddingServer, type TestEmbeddingServer } from "../../support/embedding-server";
+import { createRetrievalService } from "@/server/modules/retrieval/retrieval-service";
 
 import type { IngestionJobInput } from "@/server/modules/ingestion/ingestion-input";
 import {
@@ -39,8 +41,11 @@ describe("publishIngestionJob", () => {
     let connection: ChannelModel;
     let channel: Channel;
     let rabbitmqUrl: string;
+    let embeddings: TestEmbeddingServer;
 
     beforeAll(async () => {
+        embeddings = await startEmbeddingServer();
+        vi.stubEnv("EMBEDDING_SERVICE_URL", embeddings.url);
         vi.stubEnv("INGESTION_QUEUE_NAME", INGESTION_QUEUE_NAME);
         vi.stubEnv("INGESTION_REJECTED_QUEUE_NAME", REJECTED_INGESTION_QUEUE_NAME);
         broker = await new GenericContainer("rabbitmq:4-management")
@@ -83,6 +88,7 @@ describe("publishIngestionJob", () => {
             s3?.destroy();
             await storage?.stop();
             await broker?.stop();
+            await embeddings?.stop();
             await databasePool.end();
         }
     });
@@ -94,6 +100,7 @@ describe("publishIngestionJob", () => {
         const worker = spawn(resolve("worker/.venv/bin/python"), ["-m", "ragnarok_ingestion"], {
             cwd: resolve("worker"),
             env: { ...process.env, DATABASE_URL: inject("databaseUrl"), RABBITMQ_URL: rabbitmqUrl,
+                EMBEDDING_SERVICE_URL: embeddings.url,
                 EMBEDDING_MODEL_DIR: resolve("worker/models/bge-small-en-v1.5"), HF_HUB_OFFLINE: "1",
                 S3_ENDPOINT: storageEndpoint, S3_REGION: "us-east-1", S3_BUCKET: "ingestion-test",
                 S3_ACCESS_KEY_ID: "testuser", S3_SECRET_ACCESS_KEY: "testpassword",
@@ -157,6 +164,13 @@ describe("publishIngestionJob", () => {
                 expect(chunk.embedding).toHaveLength(384);
                 expect(chunk.embedding?.every(Number.isFinite)).toBe(true);
                 expect(chunk.embedding?.reduce((sum, value) => sum + value * value, 0)).toBeCloseTo(1, 5);
+            }
+            if (!expectedError) {
+                const retrieved = await createRetrievalService(database).retrieve(owner.id, {
+                    query: sourceType === "text" ? "How was the text submitted and chunked?" : "What does the source say about alpha beta?",
+                    scope: { mode: "selected", documentIds: [documentId] },
+                });
+                expect(retrieved.chunks.map((chunk) => chunk.chunkId).sort()).toEqual(chunks.map((chunk) => chunk.id).sort());
             }
         } finally {
             worker.kill("SIGINT");
