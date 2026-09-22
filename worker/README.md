@@ -1,7 +1,7 @@
 # Python ingestion worker
 
 The worker consumes RabbitMQ messages and ingests queued text and PDF documents. It loads
-an owned revision from PostgreSQL, splits it using BGE token counts, generates local
+an owned revision from PostgreSQL, splits it using BGE token counts, requests shared
 CPU embeddings, and atomically saves chunks, vectors, and completion.
 Next.js publishes new text submissions and verified PDF upload completions.
 Failure recovery remains unfinished; see the [backlog](../docs/todo.md).
@@ -37,7 +37,16 @@ are `ragnarok` and `ragnarok_dev_password`. Port 5672 is for application connect
 broker data across ordinary container restarts. The hostname keeps RabbitMQ's node
 identity stable. This development image follows the RabbitMQ 4 major series.
 
-From `worker`, start the consumer:
+Set `EMBEDDING_SERVICE_URL=http://127.0.0.1:8081` in the root `.env`.
+From `worker`, start the embedding service in its own terminal after provisioning
+the pinned model below:
+
+```bash
+uv run --env-file ../.env python -m ragnarok_ingestion.embedding_server
+```
+
+It loads one resident model for both document batches and interactive queries.
+Keep it running and start the consumer in another terminal:
 
 ```bash
 uv run --env-file ../.env worker
@@ -49,7 +58,7 @@ root environment. If those variables are already supplied by your shell or deplo
 use `uv run worker`. For that shorter command in a local terminal, first run
 `export UV_ENV_FILE=../.env` from the worker directory. This applies to that shell session.
 The worker stays running until interrupted or an unrecovered
-error occurs. No HTTP server is involved. It declares the durable queues
+error occurs. The consumer calls the internal embedding HTTP service. It declares the durable queues
 `ragnarok.ingestion.v1` and `ragnarok.ingestion.rejected.v1`.
 
 Starting the worker does not enqueue existing documents. With the worker running,
@@ -67,7 +76,7 @@ does not move existing messages. No dependency installation is needed for this c
 ## Follow one message through the files
 
 1. `__main__.py` reads `DATABASE_URL` and `RABBITMQ_URL`, configures logging, and
-   loads one local embedding model, and starts the consumer. It contains no ingestion workflow. Missing variables
+   loads the matching tokenizer and HTTP embedding adapter, and starts the consumer. It contains no ingestion workflow. Missing variables
    produce a short startup error.
 2. `consumer.py` connects to RabbitMQ and asks for one unacknowledged message at a
    time with `prefetch_count=1`. It validates the message, calls the service, then
@@ -130,7 +139,7 @@ completed/failed documents, missing documents, and unmatched ownership/revisions
 are ignored. PDF jobs load the authorized storage key from S3.
 
 Invalid JSON goes to the rejected queue without printing its content. Temporary
-Psycopg operational errors, PDF download failures, and busy document locks get three attempts per delivery,
+Psycopg operational errors, PDF download failures, embedding service failures, and busy document locks get three attempts per delivery,
 with one- and two-second delays. If those fail, the process exits without acknowledging.
 An unexpected processing exception also stops the process. Restart allows RabbitMQ
 to redeliver unacknowledged work. Oversized or blank text receives a fixed safe
@@ -141,7 +150,7 @@ Deferred recovery, retry, supervision, and fault-test work is tracked in the
 remains unfinished.
 
 The current attempt limit resets after restart. PDF downloading and extraction share
-one subprocess deadline. Token-aware chunking and embedding run in the parent after
+one subprocess deadline. Token-aware chunking runs in the parent and embedding requests run through HTTP after
 extraction; they are not covered by the PDF deadline. This does not provide full crash recovery.
 Next.js publishes persistent messages and waits for publisher confirms.
 
@@ -239,7 +248,7 @@ uv run hf download Qdrant/bge-small-en-v1.5-onnx-Q \
 Keep this folder out of Git. Copy or mount the same provisioned files on the VPS.
 The loader requires this particular artifact layout and reports missing files;
 it is not a loader for arbitrary ONNX models.
-`EMBEDDING_MODEL_DIR` can override the default folder when starting the worker.
+`EMBEDDING_MODEL_DIR` can override the default folder for both the worker tokenizer and embedding server.
 It must contain the pinned artifact above; the loader does not verify file hashes.
 
 ```bash
@@ -269,10 +278,10 @@ Apply generated migration `0005_groovy_swordsman.sql` with `npm run db:migrate`
 before restarting the worker. Existing chunks keep null embedding fields; no model
 runs inside a migration and no existing documents are automatically requeued.
 New ingestion writes `embedding vector(384)`, `embedding_model`, and
-`embedding_revision` together. Future retrieval must require a non-null embedding
-and the matching model/revision, in addition to ownership and completed status.
+`embedding_revision` together. Implemented retrieval requires a non-null embedding
+and matching model/revision, ownership, current source revision, and completed status.
 Re-ingestion starts from retained source text or PDF bytes, not concatenated
-overlapping chunks. Editing/retry UI and query retrieval are still separate work.
+overlapping chunks. Editing and ingestion retry UI remain separate work. Chat query retrieval is now implemented.
 
 ## PostgreSQL topics to learn next
 
@@ -309,7 +318,7 @@ Expected source/parser errors use safe JSON messages, not raw child stderr. The 
 keeps its database connection, revision checks, RabbitMQ heartbeats, and acknowledgement
 responsibility. The child has no database work. This is not a memory sandbox.
 
-Run local infrastructure, Next.js, and the worker with the commands above, upload a
+Run local infrastructure, Next.js, the embedding service, and the worker with the commands above, upload a
 PDF, and refresh Documents. Existing uploaded documents still need completion/recovery;
 worker startup does not backfill them. Provision the model and apply the embedding
 migration before starting this version of the worker.
@@ -337,3 +346,24 @@ exception messages and source contents. Share these event lines when diagnosing
 a failure. Logs are not stored centrally yet. A `job_finished` outcome of `failed`
 means the document's failure was persisted and the message acknowledged; consult
 the document's safe processing error for the reason.
+
+## Shared embedding service
+
+`embedding_http.py` validates requests/responses and supplies the synchronous worker
+adapter. `embedding_server.py` owns the model and a bounded priority queue. Both
+query and document calls use the same instance; the worker owns only its tokenizer.
+Query priority applies between batches, with no preemption of an active inference.
+See [retrieval.md](../docs/retrieval.md) for timeouts, capacity, deployment restrictions,
+and the fixed synthetic ranking benchmark.
+
+Apply migration `0007_huge_wong.sql` with `npm run db:migrate` from the repository
+root before using chat retrieval. No development migration runs automatically.
+
+The embedding API uses FastAPI and Uvicorn. Start it with the same module command
+above. Its OpenAPI UI is available at http://127.0.0.1:8081/docs while running.
+Restart the embedding process after this dependency/code update.
+
+Embedding logs include model loading, readiness, and shutdown. Each inference
+request logs a process-local request number, query/document kind, batch size, queue
+depth, elapsed milliseconds, and completion or a safe error class. Texts, vectors,
+and validation payloads are excluded. Health requests do not produce access logs.
