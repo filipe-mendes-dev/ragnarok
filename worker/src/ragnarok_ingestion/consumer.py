@@ -11,7 +11,8 @@ from psycopg import OperationalError
 from pydantic import ValidationError
 
 from ragnarok_ingestion.diagnostics import safe_error_details
-from ragnarok_ingestion.embedding import LocalEmbedder
+from ragnarok_ingestion.embedding import DocumentEmbedder
+from ragnarok_ingestion.embedding_http import EmbeddingUnavailableError
 from ragnarok_ingestion.ingestion_input import parse_ingestion_job_input
 from ragnarok_ingestion.ingestion_service import DocumentBusyError, ingest_document
 
@@ -38,7 +39,7 @@ async def declare_ingestion_queue(channel: AbstractChannel) -> AbstractQueue:
 
 
 async def consume_ingestion(
-    rabbitmq_url: str, database_url: str, embedder: LocalEmbedder,
+    rabbitmq_url: str, database_url: str, embedder: DocumentEmbedder,
 ) -> None:
     # Fail visibly on connection loss. Restarting permits redelivery of unacked work.
     logger.info("event=broker_connecting")
@@ -66,11 +67,11 @@ async def consume_ingestion(
                     logger.info("event=job_attempt document=%s revision=%s attempt=%s",
                                 job.document_id, job.revision, attempt + 1)
                     try:
-                        # Database work and model inference are synchronous. A thread keeps
+                        # Database work and embedding HTTP calls are synchronous. A thread keeps
                         # their work from blocking RabbitMQ heartbeats in this loop.
                         outcome = await asyncio.to_thread(ingest_document, database_url, job, embedder)
                         break
-                    except (OperationalError, DocumentBusyError, PdfDownloadError) as error:
+                    except (OperationalError, DocumentBusyError, PdfDownloadError, EmbeddingUnavailableError) as error:
                         logger.warning("event=job_attempt_failed document=%s revision=%s attempt=%s error=%s",
                                        job.document_id, job.revision, attempt + 1, safe_error_details(error))
                         if attempt == 2:

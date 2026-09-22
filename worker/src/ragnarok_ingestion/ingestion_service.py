@@ -17,7 +17,7 @@ from ragnarok_ingestion.document_repository import (
 from ragnarok_ingestion.ingestion_input import IngestionJobInput
 from ragnarok_ingestion.embedding import (
     BATCH_SIZE, MODEL_NAME, MODEL_REVISION, TOKEN_CHUNKING_METHOD, TOKEN_CHUNKING_SETTINGS,
-    EmbeddingInputError, LocalEmbedder, chunk_for_embedding, embed_documents,
+    EmbeddingInputError, DocumentEmbedder, chunk_for_embedding, embed_documents,
 )
 from ragnarok_ingestion.pdf_processing import process_pdf
 from ragnarok_ingestion.pdf_extraction import PdfExtractionError
@@ -31,7 +31,7 @@ class DocumentBusyError(Exception):
 
 
 def ingest_document(
-    database_url: str, job: IngestionJobInput, embedder: LocalEmbedder,
+    database_url: str, job: IngestionJobInput, embedder: DocumentEmbedder,
 ) -> Literal["completed", "failed", "ignored"]:
     # A dedicated connection is required: closing it releases the advisory lock.
     logger.info("event=ingestion_stage stage=database_connect document=%s revision=%s", job.document_id, job.revision)

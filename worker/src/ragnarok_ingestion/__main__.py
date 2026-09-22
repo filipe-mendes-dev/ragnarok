@@ -7,7 +7,8 @@ from pathlib import Path
 
 from ragnarok_ingestion.consumer import consume_ingestion
 from ragnarok_ingestion.diagnostics import safe_error_details
-from ragnarok_ingestion.embedding import DEFAULT_MODEL_DIRECTORY, load_local_embedder
+from ragnarok_ingestion.embedding import DEFAULT_MODEL_DIRECTORY
+from ragnarok_ingestion.embedding_http import load_remote_embedder
 
 
 def main() -> None:
@@ -20,9 +21,9 @@ def main() -> None:
 
     try:
         model_directory = Path(os.environ.get("EMBEDDING_MODEL_DIR", str(DEFAULT_MODEL_DIRECTORY)))
-        logging.info("event=embedding_model_loading")
-        embedder = load_local_embedder(model_directory)
-        logging.info("event=embedding_model_ready")
+        logging.info("event=embedding_client_loading")
+        embedder = load_remote_embedder(model_directory)
+        logging.info("event=embedding_client_ready")
         asyncio.run(consume_ingestion(rabbitmq_url, database_url, embedder))
     except KeyboardInterrupt:
         logging.info("Worker stopped")
