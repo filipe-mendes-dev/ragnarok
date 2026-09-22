@@ -43,6 +43,13 @@
       "when": 1790030531098,
       "tag": "0005_groovy_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790051373440,
+      "tag": "0006_awesome_nighthawk",
+      "breakpoints": true
     }
   ]
 }

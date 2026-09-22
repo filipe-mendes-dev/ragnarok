@@ -1,6 +1,6 @@
 # RAGnarok backlog
 
-Last updated: 2026-09-21
+Last updated: 2026-09-22
 
 Record deferred work here when it is agreed. The [roadmap](roadmap.md) owns phase
 order; this file owns the details of follow-ups. An unchecked item is unfinished,
@@ -43,6 +43,17 @@ block starting Phase 5 unless explicitly stated.
   reject stale results, and test cross-user access and concurrent processing.
 - [ ] **Delete owned documents and stored PDFs.** Define recovery when object
   deletion fails, test ownership, and preserve safe handling of obsolete messages.
+
+## Conversation streaming
+
+- [ ] **Stream assistant responses.** When generation is connected, display answer
+  text incrementally instead of waiting for the complete response. Evaluate SSE
+  first; use WebSockets only if bidirectional real-time communication is needed.
+  Keep message submission and durable conversation history separate from the
+  stream transport. Complete when authenticated, ownership-checked streams support
+  cancellation, explicit completion/errors, and recovery after disconnects without
+  duplicate messages. Verify that persisted answers match the displayed result
+  and that streaming works through the production reverse proxy.
 
 ## Ingestion quality and later decisions
 

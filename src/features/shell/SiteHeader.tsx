@@ -21,6 +21,7 @@ export function SiteHeader({ user }: SiteHeaderProps) {
                 <nav aria-label="Primary" className="flex flex-wrap items-center gap-1">
                     {user ? (
                         <>
+                            <Link className="inline-flex min-h-11 items-center rounded-control px-2 text-sm font-medium text-muted-foreground hover:bg-surface-muted hover:text-foreground sm:px-3" href="/chat">Chat</Link>
                             <Link
                                 className="inline-flex min-h-11 items-center rounded-control px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground sm:px-3"
                                 href="/documents"

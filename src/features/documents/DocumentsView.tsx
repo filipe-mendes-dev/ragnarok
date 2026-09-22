@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RemoveDocumentButton } from "@/features/documents/RemoveDocumentButton";
 
 import type { DocumentSourceType, DocumentStatus } from "@/shared/documents";
 
@@ -62,8 +63,7 @@ export function DocumentsView({ documents, userEmail }: DocumentsViewProps) {
                             <div className="mt-5 rounded-panel border border-dashed border-border bg-surface px-6 py-12">
                                 <h3 className="font-medium">No documents yet</h3>
                                 <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                                    Add a text source or PDF. It will remain in the
-                                    uploaded state until the queue is connected.
+                                    Add a text source or PDF to start processing your documents.
                                 </p>
                             </div>
                         ) : (
@@ -84,9 +84,12 @@ export function DocumentsView({ documents, userEmail }: DocumentsViewProps) {
                                                 · {dateFormatter.format(document.createdAt)}
                                             </p>
                                         </div>
+                                        <div className="flex shrink-0 flex-wrap items-center gap-3">
                                         <span className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs capitalize text-muted-foreground">
                                             {document.status}
                                         </span>
+                                        <RemoveDocumentButton id={document.id} title={document.title} deleting={document.status === "deleting"} />
+                                        </div>
                                     </li>
                                 ))}
                             </ul>

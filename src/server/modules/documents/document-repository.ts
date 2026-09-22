@@ -78,12 +78,24 @@ export function createDocumentRepository(databaseClient: Database) {
         return record ?? null;
     }
 
+    async function markDeletingForUser(userId: string, documentId: string): Promise<DocumentRow | null> {
+        const [record] = await databaseClient.update(document).set({ status: "deleting" })
+            .where(and(eq(document.id, documentId), eq(document.userId, userId))).returning();
+        return record ?? null;
+    }
+
+    async function deleteForUser(userId: string, documentId: string): Promise<void> {
+        await databaseClient.delete(document).where(and(eq(document.id, documentId), eq(document.userId, userId), eq(document.status, "deleting")));
+    }
+
     return {
         findByIdForUser,
         listForUser,
         insert,
         markUploadedForUser,
         markQueuedForUser,
+        markDeletingForUser,
+        deleteForUser,
     };
 }
 

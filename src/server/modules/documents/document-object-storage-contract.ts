@@ -10,6 +10,7 @@ export interface StoredObjectMetadata {
 }
 
 export interface DocumentObjectStorage {
+    deleteObject(storageKey: string): Promise<void>;
     createPdfUploadUrl(
         input: CreatePdfUploadUrlInput,
     ): Promise<string>;

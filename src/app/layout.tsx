@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PageFrame } from "@/features/shell/PageFrame";
 import { SiteFooter } from "@/features/shell/SiteFooter";
 import { SiteHeader } from "@/features/shell/SiteHeader";
 import { getCurrentUser } from "@/server/auth/session";
@@ -16,10 +17,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
 
   return (
     <html lang="en">
-      <body className="flex min-h-svh flex-col">
-        <SiteHeader user={user} />
-        <div className="min-w-0 flex-1">{children}</div>
-        <SiteFooter />
+      <body>
+        <PageFrame header={<SiteHeader user={user} />} footer={<SiteFooter />}>{children}</PageFrame>
       </body>
     </html>
   );

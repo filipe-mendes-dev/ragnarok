@@ -1,4 +1,5 @@
 import {
+    DeleteObjectCommand,
     HeadObjectCommand,
     PutObjectCommand,
     S3Client,
@@ -63,7 +64,12 @@ export function createS3DocumentObjectStorage(
         }
     }
 
+    async function deleteObject(storageKey: string): Promise<void> {
+        await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }));
+    }
+
     return {
+        deleteObject,
         createPdfUploadUrl,
         getObjectMetadata,
     };

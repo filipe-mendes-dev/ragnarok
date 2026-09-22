@@ -10,6 +10,7 @@ interface FakeDocumentObjectStorageOptions {
 }
 
 export interface FakeDocumentObjectStorage extends DocumentObjectStorage {
+    deletedKeys: string[];
     metadataRequests: string[];
     uploadUrlRequests: CreatePdfUploadUrlInput[];
 }
@@ -25,6 +26,7 @@ export function createFakeDocumentObjectStorage(
                   sizeBytes: 1_024,
               };
     const uploadUrl = overrides.uploadUrl ?? "https://storage.test/upload";
+    const deletedKeys: string[] = [];
     const metadataRequests: string[] = [];
     const uploadUrlRequests: CreatePdfUploadUrlInput[] = [];
 
@@ -42,7 +44,11 @@ export function createFakeDocumentObjectStorage(
         return metadata;
     }
 
+    async function deleteObject(key: string): Promise<void> { deletedKeys.push(key); }
+
     return {
+        deleteObject,
+        deletedKeys,
         createPdfUploadUrl,
         getObjectMetadata,
         metadataRequests,

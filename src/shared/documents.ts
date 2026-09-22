@@ -6,6 +6,7 @@ export const DOCUMENT_STATUSES = [
     "processing",
     "completed",
     "failed",
+    "deleting",
 ] as const;
 export const DOCUMENT_TITLE_MAX_LENGTH = 200;
 export const TEXT_DOCUMENT_MAX_CHARACTERS = 100_000;
@@ -41,3 +42,5 @@ export interface CompletePdfUploadActionResult {
     errorMessage: string | null;
     succeeded: boolean;
 }
+
+export const PDF_UPLOAD_URL_LIFETIME_SECONDS = 5 * 60;
