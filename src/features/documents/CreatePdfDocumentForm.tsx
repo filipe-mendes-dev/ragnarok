@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type SubmitEvent, useState } from "react";
+import { type ChangeEvent, type SubmitEvent, useState } from "react";
 
 import {
     DOCUMENT_TITLE_MAX_LENGTH,
@@ -29,6 +29,19 @@ export function CreatePdfDocumentForm({
     const router = useRouter();
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [isPending, setIsPending] = useState(false);
+    const [title, setTitle] = useState("");
+
+    function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
+        const file = event.currentTarget.files?.[0];
+
+        if (file) {
+            setTitle((currentTitle) =>
+                currentTitle.trim().length === 0
+                    ? file.name.slice(0, DOCUMENT_TITLE_MAX_LENGTH)
+                    : currentTitle,
+            );
+        }
+    }
 
     async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -113,9 +126,11 @@ export function CreatePdfDocumentForm({
                     id="pdf-title"
                     maxLength={DOCUMENT_TITLE_MAX_LENGTH}
                     name="title"
+                    onChange={(event) => setTitle(event.currentTarget.value)}
                     placeholder="Architecture reference"
                     required
                     type="text"
+                    value={title}
                 />
             </div>
 
@@ -129,6 +144,7 @@ export function CreatePdfDocumentForm({
                     disabled={isPending}
                     id="pdf-file"
                     name="file"
+                    onChange={handleFileChange}
                     required
                     type="file"
                 />
