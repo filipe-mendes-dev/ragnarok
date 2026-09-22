@@ -32,7 +32,7 @@ export function SignUpForm() {
                 return;
             }
 
-            router.push("/documents");
+            router.push("/chat");
             router.refresh();
         } catch {
             setErrorMessage("Unable to reach the authentication service.");
@@ -48,7 +48,7 @@ export function SignUpForm() {
         try {
             const { error } = await authClient.signIn.social({
                 provider: "github",
-                callbackURL: "/documents",
+                callbackURL: "/chat",
             });
 
             if (error) {

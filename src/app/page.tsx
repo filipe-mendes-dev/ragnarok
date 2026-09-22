@@ -6,7 +6,7 @@ export default async function Home() {
     const user = await getCurrentUser();
 
     if (user) {
-        redirect("/documents");
+        redirect("/chat");
     }
 
     return <LandingPage />;
