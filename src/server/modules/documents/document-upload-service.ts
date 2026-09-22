@@ -5,14 +5,13 @@ import type { DocumentObjectStorage } from "@/server/modules/documents/document-
 import type { DocumentRepository } from "@/server/modules/documents/document-repository";
 import {
     PDF_MIME_TYPE,
+    PDF_UPLOAD_URL_LIFETIME_SECONDS,
     type PdfUploadAuthorization,
     type StartPdfUploadInput,
 } from "@/shared/documents";
 
 import type { IngestionJobInput } from "@/server/modules/ingestion/ingestion-input";
 import { publishIngestionJob } from "@/server/queue/rabbitmq-ingestion-publisher";
-
-const UPLOAD_URL_LIFETIME_SECONDS = 5 * 60;
 
 const DOCUMENT_UPLOAD_ERROR_MESSAGES = {
     invalid_state: "PDF upload is not awaiting completion",
@@ -55,7 +54,7 @@ export function createDocumentUploadService(
         const storageKey = createPdfStorageKey(userId, documentId);
         const uploadUrl = await objectStorage.createPdfUploadUrl({
             contentType: PDF_MIME_TYPE,
-            expiresInSeconds: UPLOAD_URL_LIFETIME_SECONDS,
+            expiresInSeconds: PDF_UPLOAD_URL_LIFETIME_SECONDS,
             storageKey,
         });
 

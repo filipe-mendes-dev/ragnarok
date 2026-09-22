@@ -1,5 +1,8 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
+import { createDocumentDeletionService, DocumentDeletionError } from '@/server/modules/documents/document-deletion-service';
+
 import { redirect } from 'next/navigation';
 import { ZodError } from 'zod';
 
@@ -145,5 +148,17 @@ export async function completePdfUploadAction(
         }
 
         throw error;
+    }
+}
+
+export async function deleteDocumentAction(documentId: string): Promise<{ errorMessage: string | null }> {
+    const user = await requireCurrentUser();
+    try {
+        await createDocumentDeletionService(documentRepository, documentObjectStorage).deleteDocument(user.id, documentId);
+        revalidatePath('/documents');
+        return { errorMessage: null };
+    } catch (error: unknown) {
+        revalidatePath('/documents');
+        return { errorMessage: error instanceof DocumentDeletionError ? error.message : 'Could not remove this document. Please retry.' };
     }
 }
