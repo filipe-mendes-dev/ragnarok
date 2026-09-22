@@ -10,20 +10,23 @@ activity timestamps. `message` stores role, text, and a unique sequence within i
 conversation. The first send creates the conversation; opening a blank chat does
 not write an empty record. Deleting a conversation cascades to its messages.
 
-The chat service saves a question and the literal assistant response
-`Answers coming later` in one transaction. These are real persisted placeholder
-answers for UI testing, not generated answers. No document retrieval occurs.
-Before connecting generation, distinguish or remove these development placeholders
-from model context and historical answer evaluation.
+The chat service reserves a question, assistant status message, and retrieval run
+in one short transaction. It embeds and searches outside that transaction, then
+records results or safe failure in another transaction. Completed runs display
+retrieved chunks and state that generation is not implemented. Older `Answers coming
+later` messages remain historical placeholders and must not become generation context.
 
 The browser retains a message UUID across retries of the same draft. The service
 locks the owned conversation before assigning sequence numbers. Concurrent sends
-remain ordered pairs, duplicate submissions do not add messages, and failures roll
-back both messages. Ownership is enforced in repository queries.
+remain ordered pairs and duplicate submissions do not add messages. Inference failures
+persist a failed run; retrying reuses its message IDs. A started run can be reclaimed
+after one minute if interrupted. An execution ID rejects late completion from an
+older attempt. Ownership is enforced in repository queries.
 
 The initial implementation loads the full conversation list and message history.
-Pagination, streaming, source filters, citations, traces, and generation error
-states belong to the subsequent retrieval/generation implementation.
+Document selection, retrieved evidence snapshots, timings, and safe retrieval errors
+are implemented. Pagination, generation, and streaming remain deferred. See
+[retrieval.md](retrieval.md) for the current contract and limitations.
 
 ## UI
 
@@ -37,9 +40,10 @@ after the user sends a message.
 ## Document removal
 
 Removal first marks the owned document `deleting`. The worker's existing status
-predicates prevent it from claiming or completing that document. Future retrieval
-must continue filtering to `completed` documents. Chunk deletion cascades from the
-document, including stored embeddings.
+predicates prevent it from claiming or completing that document. Retrieval filters
+to `completed` documents. Chunk deletion cascades from the document, including stored
+embeddings and saved retrieval evidence. History reads hide evidence from documents
+in `deleting` state even before physical deletion finishes.
 
 PDF cleanup removes the S3 object before deleting the database row. A failure
 retains the storage key and `deleting` state. The document list exposes a manual

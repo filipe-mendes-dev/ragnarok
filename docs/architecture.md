@@ -12,10 +12,11 @@ RAGnarok V1 has a TypeScript web application and a Python ingestion worker in on
 
 1. A Next.js web process that renders the UI and owns the browser-facing HTTP boundary.
 2. A Python RabbitMQ worker process that performs asynchronous document ingestion.
+3. One internal Python HTTP embedding process that loads the model once and serves both the worker and Next.js.
 
 The web application owns TypeScript services under `src/server`. The worker owns Python ingestion services under `worker/src/ragnarok_ingestion`. They share a versioned JSON message contract and the PostgreSQL schema, not executable modules. Drizzle remains the sole migration owner; Python repositories query that schema without a second migration system. PostgreSQL is the durable system of record. RabbitMQ coordinates background jobs. Original PDFs live in S3-compatible object storage.
 
-V1 does not introduce a separate Fastify, NestJS, or Python API because there is no independent API consumer or deployment requirement that justifies another network boundary.
+Next.js remains the browser-facing backend. A narrow internal Python embedding API is now justified by sharing one resident local model between synchronous queries and asynchronous ingestion. It owns inference only, with no database access or browser authentication. A broader Fastify, NestJS, or Python application API remains unnecessary.
 
 ## V1 stack
 
@@ -149,7 +150,7 @@ It does not import database clients, Node-only APIs, secrets, RabbitMQ, or provi
 
 ### `worker/src/ragnarok_ingestion`
 
-Contains Python ingestion behavior. The entry point configures logging, loads one resident embedding model, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text using the model tokenizer and generates embeddings before persistence.
+Contains Python ingestion behavior. The entry point configures logging, loads the matching tokenizer and HTTP embedding adapter, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text using the model tokenizer and requests embeddings from the shared service before persistence.
 
 ## Client and server dependency graphs
 
@@ -300,12 +301,11 @@ preserving legacy rows without inventing vectors. New ingestion always writes al
 three. Existing documents are not automatically requeued. Future retrieval must
 filter out null vectors and require compatible model/revision metadata as well as
 ownership and completed status. Drizzle owns migrations; Python writes through
-Psycopg using parameterized vector casts. No vector index, lexical fields, or
-retrieval endpoint is added in this step.
+Psycopg using parameterized vector casts. That schema step added no vector index or lexical fields. Semantic retrieval is now implemented as described in [retrieval.md](retrieval.md); exact search uses the existing relational indexes.
 
 ## Local embedding ingestion
 
-The worker provisions Qdrant's quantized ONNX artifact for `BAAI/bge-small-en-v1.5`
+The application provisions Qdrant's quantized ONNX artifact for `BAAI/bge-small-en-v1.5`
 at revision `52398278842ec682c6f32300af41344b1c0b0bb2`. The loader reads a local
 folder and never downloads at runtime. `EMBEDDING_MODEL_DIR` optionally overrides
 `worker/models/bge-small-en-v1.5`; it must contain this exact artifact. File hashes
@@ -326,7 +326,7 @@ and completion commit atomically. A concurrent edit discards stale results. Safe
 embedding-input rejections mark the matching revision failed; unexpected model
 errors retain the existing unacknowledged-message behavior. Old chunks and vectors
 survive failed preparation or a rolled-back replacement. Existing retry/shutdown
-limitations still apply. Query-time embedding access from TypeScript remains future work.
+limitations still apply. TypeScript query embedding now calls the shared Python service through a validated HTTP adapter.
 
 ## Python worker integration
 
@@ -342,7 +342,7 @@ Python services own transaction boundaries and pass a connection to repositories
 
 A short transaction transitions queued or interrupted processing work to processing. Chunking and embedding run outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks and vectors. All writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks and vectors survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
 
-The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Queued or processing text and PDF documents are eligible. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors, failed PDF downloads, and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
+The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Queued or processing text and PDF documents are eligible. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors, failed PDF downloads, unavailable embedding service, and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
 
 Using Python means SQL queries do not inherit Drizzle's compile-time schema checks. Typed row mapping, shared contract fixtures, and database integration tests must catch drift. Implement Python ingestion operations only; do not copy the web application's upload and listing services.
 
@@ -359,7 +359,7 @@ Several related inputs may share a domain file. Scalar validators may keep names
 ### Local development
 
 ```text
-Host: Next.js dev server + Python worker process
+Host: Next.js dev server + Python worker + one Python embedding HTTP process
 Docker: PostgreSQL/pgvector + RabbitMQ + S3-compatible local storage
 Integration tests: disposable PostgreSQL/pgvector; focused RabbitMQ and S3 adapter tests use disposable containers
 ```
@@ -376,16 +376,19 @@ Internet
 
 RabbitMQ
 -> one Python RabbitMQ worker container
--> PostgreSQL, object storage, and a resident local embedding model
+-> PostgreSQL, object storage, and the internal embedding HTTP service
+
+Next.js and Python worker
+-> one Python embedding service with one resident model
 ```
 
-Production packaging will use separate Node.js web and Python worker runtime targets. Two web containers demonstrate stateless application replication on one host, not machine-level high availability.
+Production packaging will use Node.js web, Python worker, and a single Python embedding-service process. Two web containers demonstrate stateless application replication on one host, not machine-level high availability.
 
-## Why there is no separate API framework in V1
+## Why Next.js retains the application backend
 
-Next.js supplies the only browser-facing backend-for-frontend boundary currently required. Adding Fastify, NestJS, or FastAPI would introduce another build, deployment, authentication boundary, health check, API contract, and network failure mode without serving another client.
+Next.js owns browser authentication, rendering, document workflows, chat, and retrieval SQL. The internal FastAPI server owns only shared local inference. Both the ingestion worker and Next.js call it, avoiding duplicate model instances. It adds a real HTTP failure boundary, timeouts, capacity limits, and another process to supervise.
 
-OpenAPI generation alone is not sufficient justification. An internal, single-consumer interface can remain typed through schemas and application service calls without becoming a network API.
+Moving existing application services into another API framework is not required for this inference boundary. A broader Python backend remains an option if future retrieval needs justify it, rather than a prerequisite for semantic search. See [retrieval.md](retrieval.md) for the current runtime contract.
 
 ## Evolution path
 
@@ -428,7 +431,7 @@ sequenceDiagram
         S->>S: Child downloads S3 object and extracts layout text
     end
     S->>S: Split text/pages using BGE token counts
-    S->>S: Embed chunks with the resident CPU model
+    S->>S: Request chunk embeddings from the shared internal CPU model service
     S->>DB: Commit replacement chunks, vectors, and completed together
     S->>DB: Close connection and release lock
     S-->>W: Outcome
@@ -539,8 +542,7 @@ Detailed deferred work and completion conditions are tracked in [todo.md](todo.m
 
 ## Delivery sequencing
 
-The text/PDF ingestion flow now persists local embeddings. Semantic retrieval
-and grounded answers are next. Publication recovery, durable retry limits, retry UI, shutdown
+The text/PDF ingestion flow and semantic retrieval share local embeddings. Chat now displays retrieved chunks and persisted runs. Grounded generation remains explicitly unimplemented. Publication recovery, durable retry limits, retry UI, shutdown
 supervision, and broader failure testing are deferred until that product path works,
 and remain required reliability follow-ups before public deployment. Preserve the
 existing ownership, revision, atomic-write, and execution-limit protections. Continue
@@ -569,7 +571,7 @@ rejected messages until consumed or otherwise removed; it is not an audit log.
 The web health endpoint returns a static liveness response. It does not test
 PostgreSQL, RabbitMQ, or worker readiness. No distributed tracing, OpenTelemetry
 instrumentation, metrics collection/alerting, or completed RAG trace storage is
-implemented. The trace requirements elsewhere in this document are future work.
+implemented. User-facing retrieval runs, evidence, filters, model identity, timings, and safe failure state are now persisted. Generation tracing and broader operational telemetry remain future work.
 
 The next observability step should standardize JSON events and collection across
 both runtimes, using the same logical job identity. Propagated trace context and durable ingestion history are separate

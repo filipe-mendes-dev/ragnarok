@@ -5,8 +5,10 @@ Next.js and TypeScript own authentication and document submission. A Python work
 consumes RabbitMQ jobs, extracts PDF text, splits text with LangChain, and persists
 chunks in PostgreSQL. Original PDFs remain in S3-compatible storage.
 
-Text and PDF ingestion work locally. Embeddings, retrieval, grounded answers, and
-production deployment are subsequent milestones, not implemented product claims.
+Text/PDF ingestion and semantic retrieval work locally. One internal Python service
+loads the embedding model and serves both ingestion and queries. Chat displays
+retrieved chunks and saved retrieval details. Generation is not implemented yet;
+production deployment and reliability hardening remain subsequent milestones.
 
 ## Documentation
 
@@ -40,11 +42,16 @@ In a separate terminal, from `worker/`:
 
 ```bash
 uv sync
-uv run --env-file ../.env worker
+uv run --env-file ../.env python -m ragnarok_ingestion.embedding_server
 ```
 
+Provision the pinned model following [the worker guide](worker/README.md#local-embeddings).
+Set `EMBEDDING_SERVICE_URL=http://127.0.0.1:8081` in the existing root `.env`.
+Then start `uv run --env-file ../.env worker` in another terminal from `worker/`.
+
 Open http://localhost:3000, sign in, submit text or upload a PDF, and refresh the
-document list to see its status. Both the web process and worker must be running.
+document list to see its status. Next.js, the worker, and the embedding service must
+be running. Ask a short, standalone English question in Chat to inspect retrieved chunks.
 See the worker guide for recovery limitations and how to inspect failures.
 
 ## Verification
@@ -53,4 +60,6 @@ From the repository root, `npm run check` runs lint, type checking, and TypeScri
 unit/integration tests. `npm run build` checks the production web build.
 From `worker/`, run `uv run python -m pytest tests/unit` or
 `uv run python -m pytest tests/integration`.
-Integration tests require Docker and use disposable Testcontainers infrastructure.
+Integration tests require Docker, the Python environment, and the provisioned model.
+They use disposable Testcontainers infrastructure. The synthetic ranking benchmark
+and its limitations are described in [retrieval.md](docs/retrieval.md).
