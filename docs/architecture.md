@@ -497,8 +497,9 @@ bytes and returns text with original one-based page numbers, skipping empty page
 Layout mode reconstructs lines from text positions; it may add spaces and does not
 guarantee reading order for columns or tables. Pages without content streams are
 skipped before extraction. Existing chunks are not rebuilt when extraction changes.
-Initial limits are 100 pages and 100,000 extracted Unicode characters, counted
-before whitespace normalization. It rejects encrypted documents and documents
+There is no default total page or extracted-character ceiling. Optional positive
+`PDF_MAX_PAGES` and `PDF_MAX_EXTRACTED_CHARACTERS` settings enforce operator policy;
+character counts apply before whitespace normalization. It rejects encrypted documents and documents
 without extractable text. Strict parsing intentionally rejects some recoverable
 PDF defects rather than silently repairing them. Known PDF read errors become safe
 document errors; unexpected exceptions still propagate.

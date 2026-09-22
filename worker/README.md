@@ -283,6 +283,13 @@ concrete exercise in why several successful individual queries are not sufficien
 
 ## PDF service integration
 
+PDFs keep the default 10 MB upload cap and 30-second child-process deadline.
+There is no default page or total extracted-character ceiling. Optional positive
+`PDF_MAX_PAGES` and `PDF_MAX_EXTRACTED_CHARACTERS` settings can impose policy limits.
+Submitted plain text retains its separate 100,000-character limit.
+The download, extracted pages, and prepared vectors remain in memory. Inference
+runs in batches of eight; no streaming download or disk-spooling workflow is used.
+
 Extraction uses pypdf layout mode, preserving position-based lines and paragraph
 gaps. Pages without content streams are skipped. Layout mode can add spaces and
 does not guarantee correct reading order for columns or tables. Restart the worker
@@ -308,6 +315,13 @@ worker startup does not backfill them. Provision the model and apply the embeddi
 migration before starting this version of the worker.
 
 ## Troubleshooting worker failures
+
+`ingestion_rejected` includes the failing `stage` and a JSON-quoted safe `reason`.
+Optional-limit rejections include the observed count and configured limit.
+`pdf_extracted` reports nonempty page count, normalized character count, and elapsed
+PDF-processing time. `embedding_progress` reports completed/total chunks every 80
+chunks and at completion. Progress does not imply persistence: the final transaction
+still saves all chunks, embeddings, and completion together.
 
 Start from `worker/` with `uv run --env-file ../.env worker`. Logs go to stderr
 and include timestamps and event names. Follow `job_received` by document/revision,
