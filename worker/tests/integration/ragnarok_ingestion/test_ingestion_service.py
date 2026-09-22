@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 import json
+import logging
 from pathlib import Path
 from uuid import uuid4
 
@@ -290,6 +291,7 @@ def test_pdf_source_selects_extraction_and_persists_pages_or_safe_failure(
     migrated_database_url: str, queued_job: IngestionJobInput,
     filename: str, expected_error: str | None, monkeypatch: pytest.MonkeyPatch,
     embedder: LocalEmbedder,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         connection.execute(
@@ -307,8 +309,16 @@ def test_pdf_source_selects_extraction_and_persists_pages_or_safe_failure(
 
         monkeypatch.setattr(ingestion_service, "process_pdf", process_pdf)
         expected_status = "failed" if expected_error else "completed"
+        caplog.set_level(logging.INFO, logger="ragnarok_ingestion.ingestion_service")
         assert ingest_document(migrated_database_url, queued_job, embedder) == expected_status
         assert downloaded_keys == ["private/source.pdf"]
+        if expected_error is not None:
+            assert "stage=pdf_processing" in caplog.text
+            assert f"reason={json.dumps(expected_error)}" in caplog.text
+        else:
+            assert "event=pdf_extracted" in caplog.text
+            assert "completed_chunks=2 total_chunks=2" in caplog.text
+        assert "private/source.pdf" not in caplog.text
         assert connection.execute(
             "SELECT status, processing_error FROM document WHERE id = %s", (queued_job.document_id,),
         ).fetchone() == (expected_status, expected_error)
