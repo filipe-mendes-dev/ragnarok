@@ -1,6 +1,9 @@
 """Process one owned document revision and commit its chunks and outcome together."""
 
 import logging
+import json
+from itertools import batched
+from time import perf_counter
 from typing import Literal
 
 from ragnarok_ingestion.chunk_config_repository import insert_chunk_config_if_missing
@@ -13,7 +16,7 @@ from ragnarok_ingestion.document_repository import (
 )
 from ragnarok_ingestion.ingestion_input import IngestionJobInput
 from ragnarok_ingestion.embedding import (
-    MODEL_NAME, MODEL_REVISION, TOKEN_CHUNKING_METHOD, TOKEN_CHUNKING_SETTINGS,
+    BATCH_SIZE, MODEL_NAME, MODEL_REVISION, TOKEN_CHUNKING_METHOD, TOKEN_CHUNKING_SETTINGS,
     EmbeddingInputError, LocalEmbedder, chunk_for_embedding, embed_documents,
 )
 from ragnarok_ingestion.pdf_processing import process_pdf
@@ -47,8 +50,9 @@ def ingest_document(
             return "ignored"
 
         # This computation runs after the processing transaction has committed.
-        logger.info("event=ingestion_stage stage=chunking document=%s revision=%s source_type=%s",
-                    job.document_id, job.revision, source.source_type)
+        stage = "source_validation" if source.source_type == "text" else "pdf_processing"
+        logger.info("event=ingestion_stage stage=%s document=%s revision=%s source_type=%s",
+                    stage, job.document_id, job.revision, source.source_type)
         error_message: str | None = None
         chunks: list[TextChunk] = []
         embeddings: list[list[float]] = []
@@ -58,12 +62,23 @@ def ingest_document(
                 if text is None or not text.strip() or len(text) > 100_000:
                     error_message = "Text must contain between 1 and 100,000 characters."
                 else:
+                    stage = "chunking"
+                    logger.info("event=ingestion_stage stage=chunking document=%s revision=%s characters=%s",
+                                job.document_id, job.revision, len(text))
                     chunks = chunk_for_embedding(text, embedder.tokenizer)
             elif source.source_type == "pdf":
                 if source.storage_key is None:
                     raise RuntimeError("PDF source has no storage key")
                 # Only the owned current revision can supply this storage key.
-                for page in process_pdf(source.storage_key):
+                started = perf_counter()
+                pages = process_pdf(source.storage_key)
+                logger.info("event=pdf_extracted document=%s revision=%s extracted_pages=%s characters=%s duration_ms=%s",
+                            job.document_id, job.revision, len(pages), sum(len(page.text) for page in pages),
+                            round((perf_counter() - started) * 1000))
+                stage = "chunking"
+                logger.info("event=ingestion_stage stage=chunking document=%s revision=%s",
+                            job.document_id, job.revision)
+                for page in pages:
                     for chunk in chunk_for_embedding(page.text, embedder.tokenizer):
                         chunks.append(TextChunk(len(chunks), chunk.text, page.page_number))
             else:
@@ -72,15 +87,24 @@ def ingest_document(
             if error_message is None:
                 if not chunks:
                     raise RuntimeError("Chunk output must not be empty")
+                stage = "embedding"
                 logger.info("event=ingestion_stage stage=embedding document=%s revision=%s chunk_count=%s model=%s",
                             job.document_id, job.revision, len(chunks), MODEL_NAME)
-                embeddings = embed_documents(embedder, [chunk.text for chunk in chunks])
+                started = perf_counter()
+                for batch in batched(chunks, BATCH_SIZE):
+                    embeddings.extend(embed_documents(embedder, [chunk.text for chunk in batch]))
+                    if len(embeddings) % 80 == 0 or len(embeddings) == len(chunks):
+                        logger.info("event=embedding_progress document=%s revision=%s completed_chunks=%s total_chunks=%s duration_ms=%s",
+                                    job.document_id, job.revision, len(embeddings), len(chunks),
+                                    round((perf_counter() - started) * 1000))
+                logger.info("event=embedding_completed document=%s revision=%s chunk_count=%s duration_ms=%s",
+                            job.document_id, job.revision, len(chunks), round((perf_counter() - started) * 1000))
         except (PdfExtractionError, EmbeddingInputError) as error:
             error_message = str(error)
 
         if error_message is not None:
-            logger.warning("event=ingestion_rejected document=%s revision=%s source_type=%s",
-                           job.document_id, job.revision, source.source_type)
+            logger.warning("event=ingestion_rejected document=%s revision=%s source_type=%s stage=%s reason=%s",
+                           job.document_id, job.revision, source.source_type, stage, json.dumps(error_message))
             with connection.transaction():
                 failed = update_status_for_user(
                     connection, job.user_id, job.document_id, job.revision,

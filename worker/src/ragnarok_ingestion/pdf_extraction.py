@@ -6,10 +6,6 @@ from io import BytesIO
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-MAX_PDF_PAGES = 100
-MAX_EXTRACTED_CHARACTERS = 100_000
-
-
 @dataclass(frozen=True)
 class ExtractedPage:
     page_number: int
@@ -20,14 +16,20 @@ class PdfExtractionError(ValueError):
     """An expected document rejection with a safe public message."""
 
 
-def extract_pdf_pages(pdf_bytes: bytes) -> list[ExtractedPage]:
+def extract_pdf_pages(
+    pdf_bytes: bytes, *, max_pages: int | None = None,
+    max_characters: int | None = None,
+) -> list[ExtractedPage]:
     """Skip empty pages while preserving their original one-based numbering.
 
-    These output limits do not bound parser execution time or memory. The caller
+    Optional policy limits do not bound parser execution time or memory. The caller
     must bound the downloaded bytes and isolate extraction before handling uploads.
     """
     if not isinstance(pdf_bytes, bytes):
         raise TypeError("PDF source must be bytes")
+    for name, value in (("max_pages", max_pages), ("max_characters", max_characters)):
+        if value is not None and (type(value) is not int or value <= 0):
+            raise ValueError(f"{name} must be a positive integer")
 
     pages: list[ExtractedPage] = []
     character_count = 0
@@ -37,16 +39,21 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[ExtractedPage]:
             reader = PdfReader(stream, strict=True)
             if reader.is_encrypted:
                 raise PdfExtractionError("Encrypted PDFs are not supported.")
-            if len(reader.pages) > MAX_PDF_PAGES:
-                raise PdfExtractionError("PDF must contain at most 100 pages.")
+            if max_pages is not None and len(reader.pages) > max_pages:
+                raise PdfExtractionError(
+                    f"PDF has {len(reader.pages):,} pages; the configured limit is {max_pages:,} pages."
+                )
 
             for page_number, page in enumerate(reader.pages, start=1):
                 if page.get_contents() is None:
                     continue
                 text = page.extract_text(extraction_mode="layout")
                 character_count += len(text)
-                if character_count > MAX_EXTRACTED_CHARACTERS:
-                    raise PdfExtractionError("PDF text must not exceed 100,000 characters.")
+                if max_characters is not None and character_count > max_characters:
+                    raise PdfExtractionError(
+                        f"PDF text exceeds the {max_characters:,}-character limit "
+                        f"(observed {character_count:,} characters by page {page_number})."
+                    )
 
                 text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
                 if text:

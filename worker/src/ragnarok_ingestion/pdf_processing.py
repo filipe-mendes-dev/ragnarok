@@ -3,6 +3,7 @@
 from dataclasses import asdict
 import json
 import logging
+import os
 import subprocess
 import sys
 
@@ -25,7 +26,9 @@ def process_pdf(storage_key: str) -> list[ExtractedPage]:
         )
     except subprocess.TimeoutExpired:
         logger.error("event=pdf_child_timeout timeout_seconds=%s", PDF_PROCESSING_TIMEOUT_SECONDS)
-        raise PdfExtractionError("PDF processing exceeded the 30-second limit.") from None
+        raise PdfExtractionError(
+            f"PDF processing exceeded the {PDF_PROCESSING_TIMEOUT_SECONDS}-second limit."
+        ) from None
     if result.returncode == 2:
         raise PdfExtractionError(TypeAdapter(str).validate_json(result.stdout, strict=True))
     if result.returncode != 0:
@@ -53,7 +56,13 @@ def main() -> None:
         raise SystemExit(3) from None
 
     try:
-        pages = extract_pdf_pages(pdf_bytes)
+        max_pages = os.environ.get("PDF_MAX_PAGES")
+        max_characters = os.environ.get("PDF_MAX_EXTRACTED_CHARACTERS")
+        pages = extract_pdf_pages(
+            pdf_bytes,
+            max_pages=int(max_pages) if max_pages is not None else None,
+            max_characters=int(max_characters) if max_characters is not None else None,
+        )
     except PdfExtractionError as error:
         print(json.dumps(str(error)))
         raise SystemExit(2) from None
