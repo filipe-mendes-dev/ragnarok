@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { getRabbitmqUrl, parseServerEnvironment } from '@/server/config/env';
+import { getGenerationEnvironment, getGenerationSettings, getRabbitmqUrl, parseServerEnvironment } from '@/server/config/env';
 
 describe('getRabbitmqUrl', () => {
     afterEach(() => vi.unstubAllEnvs());
@@ -57,5 +57,30 @@ describe('parseServerEnvironment', () => {
         expect(
             parseServerEnvironment(environment).PDF_MAX_UPLOAD_SIZE_BYTES,
         ).toBe(10_485_760);
+    });
+});
+
+describe('getGenerationEnvironment', () => {
+    it('returns null when the model or API key is missing', () => {
+        expect(getGenerationEnvironment({ NODE_ENV: 'test', OPENROUTER_API_KEY: 'private-key' })).toBeNull();
+        expect(getGenerationEnvironment({ NODE_ENV: 'test', GENERATION_MODEL: 'provider/model' })).toBeNull();
+    });
+
+    it('keeps the selected model configurable', () => {
+        expect(getGenerationEnvironment({ NODE_ENV: 'test', OPENROUTER_API_KEY: 'private-key', GENERATION_MODEL: 'provider/model' }))
+            .toEqual({ OPENROUTER_API_KEY: 'private-key', GENERATION_MODEL: 'provider/model' });
+    });
+});
+
+describe('getGenerationSettings', () => {
+    it('uses defaults and accepts runtime overrides', () => {
+        expect(getGenerationSettings({ NODE_ENV: 'test' })).toEqual({ maxOutputTokens: 2048, timeoutMs: 45_000 });
+        expect(getGenerationSettings({ NODE_ENV: 'test', GENERATION_MAX_OUTPUT_TOKENS: '3072', GENERATION_TIMEOUT_MS: '60000' }))
+            .toEqual({ maxOutputTokens: 3072, timeoutMs: 60_000 });
+    });
+
+    it('rejects invalid generation limits', () => {
+        expect(() => getGenerationSettings({ NODE_ENV: 'test', GENERATION_MAX_OUTPUT_TOKENS: '0' }))
+            .toThrow('Set GENERATION_MAX_OUTPUT_TOKENS');
     });
 });
