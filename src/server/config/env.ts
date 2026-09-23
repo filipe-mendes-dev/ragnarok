@@ -18,6 +18,14 @@ export interface GenerationEnvironment {
     GENERATION_MODEL: string;
 }
 
+export interface GenerationSettings {
+    maxOutputTokens: number;
+    timeoutMs: number;
+}
+
+const DEFAULT_GENERATION_MAX_OUTPUT_TOKENS = 2048;
+const DEFAULT_GENERATION_TIMEOUT_MS = 45_000;
+
 const serverEnvironmentSchema = z.object({
     DATABASE_URL: z.url(),
     S3_ENDPOINT: z.url(),
@@ -36,6 +44,11 @@ const serverEnvironmentSchema = z.object({
 const generationEnvironmentSchema = z.object({
     OPENROUTER_API_KEY: z.string().trim().min(1),
     GENERATION_MODEL: z.string().trim().min(1),
+});
+
+const generationSettingsSchema = z.object({
+    GENERATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8192).default(DEFAULT_GENERATION_MAX_OUTPUT_TOKENS),
+    GENERATION_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(DEFAULT_GENERATION_TIMEOUT_MS),
 });
 
 let cachedServerEnvironment: ServerEnvironment | undefined;
@@ -74,6 +87,14 @@ export function getServerEnvironment(): ServerEnvironment {
 export function getGenerationEnvironment(environment: NodeJS.ProcessEnv = process.env): GenerationEnvironment | null {
     const result = generationEnvironmentSchema.safeParse(environment);
     return result.success ? result.data : null;
+}
+
+export function getGenerationSettings(environment: NodeJS.ProcessEnv = process.env): GenerationSettings {
+    const result = generationSettingsSchema.safeParse(environment);
+    if (!result.success) {
+        throw new Error("Set GENERATION_MAX_OUTPUT_TOKENS to 256-8192 and GENERATION_TIMEOUT_MS to 1000-120000");
+    }
+    return { maxOutputTokens: result.data.GENERATION_MAX_OUTPUT_TOKENS, timeoutMs: result.data.GENERATION_TIMEOUT_MS };
 }
 
 export function getIngestionQueueNames(): { ingestion: string; rejected: string } {
