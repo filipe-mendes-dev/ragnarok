@@ -26,15 +26,22 @@ export function createGenerationRunRepository(db: GenerationRunDatabase) {
             .innerJoin(conversation, eq(message.conversationId, conversation.id))
             .where(and(eq(conversation.id, conversationId), eq(conversation.userId, userId)));
         return new Map(rows.map(({ run, responseMessageId }) => [responseMessageId, {
+            traceId: run.retrievalRunId,
+            attemptId: run.executionId,
             status: run.status,
             promptVersion: run.promptVersion,
             provider: run.provider,
             requestedModel: run.requestedModel,
             responseModel: run.responseModel,
+            providerResponseId: run.providerResponseId,
+            finishReason: run.finishReason,
+            httpStatus: run.httpStatus,
             inputTokens: run.inputTokens,
             outputTokens: run.outputTokens,
+            reasoningTokens: run.reasoningTokens,
             totalTokens: run.totalTokens,
             latencyMs: run.latencyMs,
+            errorCode: run.errorCode,
             errorMessage: run.errorMessage,
         }]));
     }
@@ -45,8 +52,9 @@ export function createGenerationRunRepository(db: GenerationRunDatabase) {
 
     async function update(retrievalRunId: string, values: Partial<Pick<GenerationRunRow,
         "executionId" | "status" | "promptVersion" | "selectedChunkIds" | "provider" |
-        "requestedModel" | "responseModel" | "inputTokens" | "outputTokens" | "totalTokens" |
-        "latencyMs" | "errorMessage" | "startedAt" | "finishedAt"
+        "requestedModel" | "responseModel" | "providerResponseId" | "finishReason" | "httpStatus" |
+        "inputTokens" | "outputTokens" | "reasoningTokens" | "totalTokens" |
+        "latencyMs" | "errorCode" | "errorMessage" | "startedAt" | "finishedAt"
     >>): Promise<void> {
         await db.update(generationRun).set(values).where(eq(generationRun.retrievalRunId, retrievalRunId));
     }

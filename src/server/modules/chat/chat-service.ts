@@ -119,10 +119,15 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
                             provider: null,
                             requestedModel: null,
                             responseModel: null,
+                            providerResponseId: null,
+                            finishReason: null,
+                            httpStatus: null,
                             inputTokens: null,
                             outputTokens: null,
+                            reasoningTokens: null,
                             totalTokens: null,
                             latencyMs: null,
+                            errorCode: null,
                             errorMessage: null,
                             startedAt: new Date(),
                             finishedAt: null,
@@ -236,12 +241,28 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
         const chunks = await retrievalRunRepository.listCandidatesForRun(userId, attempt.runId);
         const started = performance.now();
         let result: GenerationResult | null = null;
+        let generationError: GenerationError | null = null;
+        let errorCode: string | null = null;
         let errorMessage: string | null = null;
         try {
-            result = await dependencies.generation.generate(input.content, chunks);
+            result = await dependencies.generation.generate(input.content, chunks, attempt.runId, executionId);
         } catch (error: unknown) {
-            errorMessage = error instanceof GenerationError ? error.message : "Generation failed. Please retry.";
+            if (error instanceof GenerationError) {
+                generationError = error;
+                errorCode = error.code;
+            } else {
+                console.error(JSON.stringify({
+                    event: "generation.workflow",
+                    outcome: "failed",
+                    traceId: attempt.runId,
+                    attemptId: executionId,
+                    errorCode: "unexpected",
+                    causeName: error instanceof Error ? error.name : typeof error,
+                }));
+            }
+            errorMessage = generationError?.message ?? "Generation failed. Please retry.";
         }
+        const observation = result ?? generationError?.metadata;
         await db.transaction(async (tx) => {
             const records = createChatRepository(tx);
             if (!(await records.lockForUser(userId, input.conversationId))) return;
@@ -253,21 +274,27 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
                 const availableIds = new Set(available.map((chunk) => chunk.chunkId));
                 if (result.selectedChunkIds.some((id) => !availableIds.has(id))) {
                     result = null;
+                    errorCode = "document_changed";
                     errorMessage = "A document changed while generating the answer. Please retry.";
                 }
             }
             await generationRuns.update(attempt.runId, {
                 status: result ? "completed" : "failed",
                 finishedAt: new Date(),
+                errorCode: result ? null : errorCode ?? "unexpected",
                 errorMessage,
                 selectedChunkIds: result?.selectedChunkIds ?? [],
-                provider: result?.provider ?? null,
-                requestedModel: result?.requestedModel ?? null,
-                responseModel: result?.responseModel ?? null,
-                inputTokens: result?.inputTokens ?? null,
-                outputTokens: result?.outputTokens ?? null,
-                totalTokens: result?.totalTokens ?? null,
-                latencyMs: result ? result.latencyMs : Math.round(performance.now() - started),
+                provider: observation?.provider ?? null,
+                requestedModel: observation?.requestedModel ?? null,
+                responseModel: observation?.responseModel ?? null,
+                providerResponseId: observation?.providerResponseId ?? null,
+                finishReason: observation?.finishReason ?? null,
+                httpStatus: observation?.httpStatus ?? null,
+                inputTokens: observation?.inputTokens ?? null,
+                outputTokens: observation?.outputTokens ?? null,
+                reasoningTokens: observation?.reasoningTokens ?? null,
+                totalTokens: observation?.totalTokens ?? null,
+                latencyMs: result ? result.latencyMs : observation?.latencyMs ?? Math.round(performance.now() - started),
             });
             await records.updateMessage(userId, attempt.responseMessageId, result?.answer ?? errorMessage ?? "Generation failed. Please retry.");
             await records.updateActivity(userId, input.conversationId);
