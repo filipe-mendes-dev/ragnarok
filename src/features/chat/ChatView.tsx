@@ -116,7 +116,11 @@ export function ChatView({ conversationId: initialConversationId, conversations,
                     <div className="mx-auto max-w-3xl py-8">
                         {messages.length === 0 ? <div className="py-12"><h2 className="text-2xl font-semibold tracking-tight">Ask about your documents</h2><p className="mt-3 text-sm text-muted-foreground">Ask a question about completed documents and inspect the retrieved chunks.</p><Link className="mt-4 inline-block text-sm text-accent underline" href="/documents/new">Add documents</Link></div> :
                             <ol className="space-y-6" aria-label="Messages" aria-live="polite" aria-relevant="additions">
-                                {messages.map((message) => <li key={message.id} className={message.role === "user" ? "ml-auto w-fit max-w-[90%] rounded-panel border border-border bg-surface-muted px-4 py-3" : "max-w-full py-2"}><p className="mb-2 text-xs font-medium text-muted-foreground">{message.role === "user" ? "You" : "RAGnarok"}</p><p className="whitespace-pre-wrap text-sm leading-7 [overflow-wrap:anywhere]">{message.content}</p>{message.retrieval && <><GenerationStatus generation={message.generation} retrieval={message.retrieval} pending={pending} onRetry={retry} /><RetrievalResults run={message.retrieval} pending={pending} onRetry={retry} /></>}</li>)}
+                                {messages.map((message) => <li key={message.id} className={message.role === "user" ? "ml-auto w-fit max-w-[90%] rounded-panel bg-accent px-4 py-3 text-accent-foreground" : "max-w-full py-2"}>
+                                    <p className={message.role === "user" ? "mb-2 text-xs font-medium text-accent-foreground" : "mb-2 text-xs font-medium text-muted-foreground"}>{message.role === "user" ? "You" : "RAGnarok"}</p>
+                                    <p className={message.role === "user" ? "whitespace-pre-wrap text-sm leading-7 [overflow-wrap:anywhere]" : "whitespace-pre-wrap text-base leading-7 [overflow-wrap:anywhere]"}>{message.content}</p>
+                                    {message.retrieval && <><GenerationStatus generation={message.generation} retrieval={message.retrieval} pending={pending} onRetry={retry} /><RetrievalResults run={message.retrieval} pending={pending} onRetry={retry} /></>}
+                                </li>)}
                             </ol>}
                     </div>
                 </div>
