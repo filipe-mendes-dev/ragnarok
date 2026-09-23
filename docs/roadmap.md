@@ -135,10 +135,10 @@ Gate: a deterministic test corpus retrieves the expected owned document in top-k
 
 Target: Day 6
 
-- [ ] Keep `retrieve()` and `generate()` as separate boundaries.
-- [ ] Implement explicit, versioned context and prompt construction.
-- [ ] Add a bounded context budget and source identifiers.
-- [ ] Generate grounded answers with abstention behavior.
+- [x] Keep `retrieve()` and `generate()` as separate boundaries.
+- [x] Implement explicit, versioned context and prompt construction.
+- [x] Add a bounded context budget and source identifiers in the prompt.
+- [x] Generate plain answers from supplied evidence with abstention instructions and a deterministic no-evidence response.
 - [ ] Validate that returned citation identifiers map to selected chunks.
 
 Gate: the UI produces an answer whose citations open the exact source evidence, and an unsupported question abstains.

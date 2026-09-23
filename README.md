@@ -5,10 +5,10 @@ Next.js and TypeScript own authentication and document submission. A Python work
 consumes RabbitMQ jobs, extracts PDF text, splits text with LangChain, and persists
 chunks in PostgreSQL. Original PDFs remain in S3-compatible storage.
 
-Text/PDF ingestion and semantic retrieval work locally. One internal Python service
-loads the embedding model and serves both ingestion and queries. Chat displays
-retrieved chunks and saved retrieval details. Generation is not implemented yet;
-production deployment and reliability hardening remain subsequent milestones.
+Text/PDF ingestion, semantic retrieval, and plain answer generation work locally.
+One internal Python service loads the embedding model and serves both ingestion
+and queries. Chat saves retrieval and generation details. Linked citations,
+production deployment, and reliability hardening remain subsequent milestones.
 
 ## Documentation
 
@@ -49,9 +49,19 @@ Provision the pinned model following [the worker guide](worker/README.md#local-e
 Set `EMBEDDING_SERVICE_URL=http://127.0.0.1:8081` in the existing root `.env`.
 Then start `uv run --env-file ../.env worker` in another terminal from `worker/`.
 
+To generate answers, set `OPENROUTER_API_KEY` and `GENERATION_MODEL` in the root
+`.env`. The model value is an OpenRouter model slug. Chat can still show retrieval
+results without these values, but generation reports that it is not configured.
+`GENERATION_MAX_OUTPUT_TOKENS` defaults to 2048 and `GENERATION_TIMEOUT_MS` defaults
+to 45000. Set either in `.env` and restart Next.js to change the limits.
+Generation runs retain the model, token counts, finish reason, provider response ID,
+latency, and a safe error code. Server logs use the run and attempt IDs to correlate
+provider responses without logging prompts or answers.
+
 Open http://localhost:3000, sign in, submit text or upload a PDF, and refresh the
 document list to see its status. Next.js, the worker, and the embedding service must
-be running. Ask a short, standalone English question in Chat to inspect retrieved chunks.
+be running. Ask a short, standalone English question in Chat to get an answer and
+inspect the retrieved chunks.
 See the worker guide for recovery limitations and how to inspect failures.
 
 ## Verification
