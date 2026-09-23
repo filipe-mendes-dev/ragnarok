@@ -13,6 +13,11 @@ export interface ServerEnvironment {
     PDF_MAX_UPLOAD_SIZE_BYTES: number;
 }
 
+export interface GenerationEnvironment {
+    OPENROUTER_API_KEY: string;
+    GENERATION_MODEL: string;
+}
+
 const serverEnvironmentSchema = z.object({
     DATABASE_URL: z.url(),
     S3_ENDPOINT: z.url(),
@@ -26,6 +31,11 @@ const serverEnvironmentSchema = z.object({
         .int()
         .positive()
         .default(DEFAULT_PDF_MAX_SIZE_BYTES),
+});
+
+const generationEnvironmentSchema = z.object({
+    OPENROUTER_API_KEY: z.string().trim().min(1),
+    GENERATION_MODEL: z.string().trim().min(1),
 });
 
 let cachedServerEnvironment: ServerEnvironment | undefined;
@@ -59,6 +69,11 @@ export function getServerEnvironment(): ServerEnvironment {
     cachedServerEnvironment ??= parseServerEnvironment(process.env);
 
     return cachedServerEnvironment;
+}
+
+export function getGenerationEnvironment(environment: NodeJS.ProcessEnv = process.env): GenerationEnvironment | null {
+    const result = generationEnvironmentSchema.safeParse(environment);
+    return result.success ? result.data : null;
 }
 
 export function getIngestionQueueNames(): { ingestion: string; rejected: string } {
