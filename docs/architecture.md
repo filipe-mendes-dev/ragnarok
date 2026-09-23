@@ -45,7 +45,7 @@ This table includes planned retrieval, deployment, and CI components. See the
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
 | CI/CD | GitHub Actions | Lint, type checking, tests, build, and later deployment |
 
-Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. Ingestion uses local BGE-small English embeddings through FastEmbed/ONNX Runtime. Generation and production object-storage providers remain implementation decisions.
+Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. Ingestion uses local BGE-small English embeddings through FastEmbed/ONNX Runtime. Generation calls OpenRouter through a server-only adapter with a configurable model. The production object-storage provider remains an implementation decision.
 
 ## Repository structure
 
@@ -542,7 +542,7 @@ Detailed deferred work and completion conditions are tracked in [todo.md](todo.m
 
 ## Delivery sequencing
 
-The text/PDF ingestion flow and semantic retrieval share local embeddings. Chat now displays retrieved chunks and persisted runs. Grounded generation remains explicitly unimplemented. Publication recovery, durable retry limits, retry UI, shutdown
+The text/PDF ingestion flow and semantic retrieval share local embeddings. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Linked citations remain unimplemented. Publication recovery, durable retry limits, document retry UI, shutdown
 supervision, and broader failure testing are deferred until that product path works,
 and remain required reliability follow-ups before public deployment. Preserve the
 existing ownership, revision, atomic-write, and execution-limit protections. Continue
@@ -571,7 +571,7 @@ rejected messages until consumed or otherwise removed; it is not an audit log.
 The web health endpoint returns a static liveness response. It does not test
 PostgreSQL, RabbitMQ, or worker readiness. No distributed tracing, OpenTelemetry
 instrumentation, metrics collection/alerting, or completed RAG trace storage is
-implemented. User-facing retrieval runs, evidence, filters, model identity, timings, and safe failure state are now persisted. Generation tracing and broader operational telemetry remain future work.
+implemented. User-facing retrieval runs, evidence, filters, model identity, timings, and safe failure state are persisted. Generation also records prompt version, selected chunk IDs, model identity, token usage, latency, and safe status. Broader operational telemetry remains future work.
 
 The next observability step should standardize JSON events and collection across
 both runtimes, using the same logical job identity. Propagated trace context and durable ingestion history are separate

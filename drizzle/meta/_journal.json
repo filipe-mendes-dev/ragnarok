@@ -57,6 +57,20 @@
       "when": 1790095235236,
       "tag": "0007_huge_wong",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790121800200,
+      "tag": "0008_slimy_ser_duncan",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790180804518,
+      "tag": "0009_curvy_king_bedlam",
+      "breakpoints": true
     }
   ]
 }

@@ -1,15 +1,15 @@
 # RAGnarok backlog
 
-Last updated: 2026-09-22
+Last updated: 2026-09-23
 
 Record deferred work here when it is agreed. The [roadmap](roadmap.md) owns phase
 order; this file owns the details of follow-ups. An unchecked item is unfinished,
 not a promise that it belongs in the current branch. Add the reason and a concrete
 completion condition. Mark items complete only with implementation and verification.
 
-Text and PDF ingestion work locally, with user-confirmed UI testing. Continue with
-Phase 5 embeddings and retrieval, then grounded answers. The work below does not
-block starting Phase 5 unless explicitly stated.
+Text and PDF ingestion work locally, with user-confirmed UI testing. Semantic
+retrieval and plain answer generation also work locally. The work below remains
+deferred unless explicitly stated.
 
 ## Before public deployment
 
@@ -44,9 +44,15 @@ block starting Phase 5 unless explicitly stated.
 - [ ] **Delete owned documents and stored PDFs.** Define recovery when object
   deletion fails, test ownership, and preserve safe handling of obsolete messages.
 
+## Answer citations
+
+- [ ] Return source identifiers with generated answers, validate that each identifier
+  maps to selected evidence, and link them to the saved chunk snapshots. Keep the
+  current plain-answer path until that mapping and its deletion behavior are tested.
+
 ## Conversation streaming
 
-- [ ] **Stream assistant responses.** When generation is connected, display answer
+- [ ] **Stream assistant responses.** Display answer
   text incrementally instead of waiting for the complete response. Evaluate SSE
   first; use WebSockets only if bidirectional real-time communication is needed.
   Keep message submission and durable conversation history separate from the
@@ -54,6 +60,18 @@ block starting Phase 5 unless explicitly stated.
   cancellation, explicit completion/errors, and recovery after disconnects without
   duplicate messages. Verify that persisted answers match the displayed result
   and that streaming works through the production reverse proxy.
+
+## Conversation presentation and scale
+
+- [ ] **Render assistant answers as Markdown.** The model can return lists and
+  emphasis, but chat currently displays their markers as text. Render a safe subset
+  of Markdown with raw HTML disabled while keeping the saved answer unchanged.
+  Verify lists, emphasis, long text, and narrow screens. Keep source labels as
+  plain text until citation identifiers are validated and linked.
+- [ ] **Virtualize long conversations.** Measure rendering with a representative
+  long history, then render only the visible messages if needed. Preserve scroll
+  position, scroll-to-latest behavior, keyboard access, and variable-height answers
+  or expanded retrieval details. Verify the behavior on small screens.
 
 ## Ingestion quality and later decisions
 

@@ -22,6 +22,14 @@ lexical search, similarity cutoff, reranking, diversity selection, or context bu
 A nearest result is not proof of relevance or sufficient evidence. Cosine similarity
 is displayed as a score, never a confidence percentage.
 
+Generation builds a versioned plain-text prompt from the saved, owned retrieval
+snapshots. It includes whole excerpts in rank order up to a 12,000-character context
+budget. If none fit, the service abstains without calling OpenRouter. Otherwise the
+server sends the question and excerpts to the configured `GENERATION_MODEL` through
+OpenRouter. The prompt asks for an answer supported by the excerpts or an abstention;
+it does not validate factual support. Citation extraction and linked sources remain
+open work.
+
 ## Shared embedding runtime
 
 Run one `ragnarok_ingestion.embedding_server` process. Both ingestion and queries
@@ -48,21 +56,26 @@ hash verification is still deferred.
 ## Persistence and retry
 
 Drizzle migration `0007_huge_wong.sql` adds retrieval runs and candidate snapshots.
-Chat first reserves the user/assistant pair and run under the owned conversation
-lock. Inference runs outside database transactions. A final short transaction saves
-candidates, timing, and the generation-unimplemented notice, or a safe failed state.
+Chat first reserves the user/assistant pair and retrieval run under the owned
+conversation lock. Retrieval and generation run outside database transactions.
+One short transaction saves retrieval candidates and starts a separate generation
+run. Another saves the answer in the assistant message and generation status,
+prompt version, selected chunk IDs, model identity, token usage, and latency when
+available. Failures retain safe messages without exposing provider response bodies.
 
-A retry uses the same question ID and canonical document scope. Completed runs are
-idempotent; active attempts report that retrieval is running. Failed runs can retry
-immediately. Interrupted started runs can be reclaimed after one minute, with a new
-execution ID preventing a late attempt from overwriting its replacement. There is
-no automatic recovery scheduler. The UI offers retry and refreshes active histories.
+A retry uses the same question ID and canonical document scope. Completed retrieval
+does not repeat after a generation failure; generation retries from owned evidence
+snapshots. Completed answers are idempotent. Interrupted started stages can be
+reclaimed after one minute, with a new execution ID preventing a late attempt from
+overwriting its replacement. There is no automatic recovery scheduler. The UI offers
+retry and refreshes active histories.
 
 Evidence snapshots preserve text/title/page/revision after re-ingestion replaces
 chunks. Deleting a document cascades its evidence snapshots; history also hides
-snapshots as soon as deletion is pending. Deleting a conversation cascades messages,
-runs, and candidates. Generation, token usage, prompt versions, context selection,
-and answer citations are absent rather than fabricated.
+snapshots as soon as deletion is pending. The final save rejects an answer when its
+selected source is no longer available at that check. Deleting a conversation cascades
+messages, runs, and candidates. Plain answers and generation metadata are persisted;
+answer citations are not yet implemented.
 
 ## Regression benchmark
 

@@ -14,7 +14,7 @@ export function LandingPage() {
                         Ask your documents. Inspect every step.
                     </h1>
                     <p className="mt-6 max-w-xl text-pretty text-base leading-7 text-muted-foreground sm:text-lg">
-                        Upload source material, receive grounded answers with citations,
+                        Upload source material, receive answers grounded in retrieved excerpts,
                         and inspect how retrieval and generation produced each result.
                     </p>
 
@@ -63,7 +63,7 @@ export function LandingPage() {
                     </ol>
 
                     <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                        Every answer keeps its query, selected chunks, citations, model
+                        Every answer keeps its query, selected chunks, model
                         usage, and stage latency available for inspection.
                     </p>
                 </div>
