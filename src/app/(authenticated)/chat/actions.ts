@@ -2,14 +2,14 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireCurrentUser } from "@/server/auth/session";
-import { database } from "@/server/db/client";
-import { ChatError, createChatService } from "@/server/modules/chat/chat-service";
+import { ChatError } from "@/server/modules/chat/chat-service";
+import { chatService } from "@/server/modules/chat/chat-runtime";
 import type { ChatActionResult, SendMessageInput } from "@/shared/chat";
 
 export async function sendMessageAction(input: SendMessageInput): Promise<ChatActionResult> {
     const user = await requireCurrentUser();
     try {
-        await createChatService(database).sendMessage(user.id, input);
+        await chatService.sendMessage(user.id, input);
         revalidatePath("/chat", "layout");
         return { errorMessage: null };
     } catch (error: unknown) {
@@ -20,7 +20,7 @@ export async function sendMessageAction(input: SendMessageInput): Promise<ChatAc
 export async function deleteConversationAction(id: string): Promise<ChatActionResult> {
     const user = await requireCurrentUser();
     try {
-        await createChatService(database).deleteConversation(user.id, id);
+        await chatService.deleteConversation(user.id, id);
         revalidatePath("/chat", "layout");
         return { errorMessage: null };
     } catch {

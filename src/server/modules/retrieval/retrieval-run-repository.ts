@@ -90,6 +90,31 @@ export function createRetrievalRunRepository(db: RunDatabase) {
         }
         return result;
     }
+    async function listCandidatesForRun(userId: string, runId: string): Promise<RetrievedChunk[]> {
+        const rows = await db.select({ candidate: retrievalCandidate }).from(retrievalCandidate)
+            .innerJoin(retrievalRun, eq(retrievalCandidate.runId, retrievalRun.id))
+            .innerJoin(message, eq(retrievalRun.messageId, message.id))
+            .innerJoin(conversation, eq(message.conversationId, conversation.id))
+            .innerJoin(document, eq(retrievalCandidate.documentId, document.id))
+            .where(and(
+                eq(retrievalCandidate.runId, runId),
+                eq(conversation.userId, userId),
+                eq(document.userId, userId),
+                ne(document.status, 'deleting'),
+            ))
+            .orderBy(asc(retrievalCandidate.rank));
+        return rows.map(({ candidate }) => ({
+            chunkId: candidate.chunkId,
+            documentId: candidate.documentId,
+            documentTitle: candidate.documentTitle,
+            revision: candidate.revision,
+            ordinal: candidate.ordinal,
+            pageNumber: candidate.pageNumber,
+            text: candidate.text,
+            rank: candidate.rank,
+            semanticSimilarity: candidate.semanticSimilarity,
+        }));
+    }
     async function insert(
         input: typeof retrievalRun.$inferInsert,
     ): Promise<void> {
@@ -139,6 +164,7 @@ export function createRetrievalRunRepository(db: RunDatabase) {
     return {
         findForMessage,
         listForConversation,
+        listCandidatesForRun,
         insert,
         update,
         insertCandidates,

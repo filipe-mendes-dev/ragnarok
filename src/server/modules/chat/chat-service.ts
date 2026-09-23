@@ -1,205 +1,206 @@
-import { randomUUID } from 'node:crypto';
-import type { Database } from '@/server/db/client';
-import { createChatRepository } from '@/server/modules/chat/chat-repository';
-import {
-    parseConversationId,
-    parseSendMessageInput,
-} from '@/server/modules/chat/chat-input';
-import { createRetrievalRunRepository } from '@/server/modules/retrieval/retrieval-run-repository';
-import {
-    createRetrievalService,
-    type RetrievalService,
-} from '@/server/modules/retrieval/retrieval-service';
-import {
-    EMBEDDING_MODEL,
-    EMBEDDING_REVISION,
-    RETRIEVAL_LIMIT,
-    RetrievalError,
-} from '@/server/modules/retrieval/retrieval-contract';
-import type {
-    ChatMessage,
-    ConversationSummary,
-    SendMessageInput,
-} from '@/shared/chat';
-import type { RetrievalResult } from '@/shared/retrieval';
+import { randomUUID } from "node:crypto";
+import type { Database } from "@/server/db/client";
+import { createGenerationRunRepository } from "@/server/modules/generation/generation-run-repository";
+import { GENERATION_PROMPT_VERSION } from "@/server/modules/generation/generation-context";
+import { GenerationError } from "@/server/modules/generation/generation-contract";
+import type { GenerationResult, GenerationService } from "@/server/modules/generation/generation-service";
+import { createRetrievalRunRepository } from "@/server/modules/retrieval/retrieval-run-repository";
+import type { RetrievalService } from "@/server/modules/retrieval/retrieval-service";
+import { EMBEDDING_MODEL, EMBEDDING_REVISION, RETRIEVAL_LIMIT, RetrievalError } from "@/server/modules/retrieval/retrieval-contract";
+import type { ChatMessage, ConversationSummary, SendMessageInput } from "@/shared/chat";
+import type { RetrievalResult } from "@/shared/retrieval";
+import { parseConversationId, parseSendMessageInput } from "./chat-input";
+import { createChatRepository } from "./chat-repository";
 
 export class ChatError extends Error {}
-const GENERATION_NOTICE =
-    'Generation is not implemented yet. Retrieved chunks are shown below.';
 
-export function createChatService(
-    db: Database,
-    retrieval: RetrievalService = createRetrievalService(db),
-) {
+interface ChatDependencies {
+    retrieval: RetrievalService;
+    generation: GenerationService;
+}
+
+interface ActiveAttempt {
+    runId: string;
+    responseMessageId: string;
+    stage: "retrieval" | "generation";
+}
+
+const STALE_ATTEMPT_MS = 60_000;
+
+export function createChatService(db: Database, dependencies: ChatDependencies) {
     const repository = createChatRepository(db);
-    async function listConversations(
-        userId: string,
-    ): Promise<ConversationSummary[]> {
+    const retrievalRunRepository = createRetrievalRunRepository(db);
+    const generationRunRepository = createGenerationRunRepository(db);
+
+    async function listConversations(userId: string): Promise<ConversationSummary[]> {
         return repository.listForUser(userId);
     }
-    async function getConversation(
-        userId: string,
-        id: string,
-    ): Promise<{ title: string; messages: ChatMessage[] } | null> {
-        const row = await repository.findForUser(
-            userId,
-            parseConversationId(id),
-        );
+
+    async function getConversation(userId: string, id: string): Promise<{ title: string; messages: ChatMessage[] } | null> {
+        const conversationId = parseConversationId(id);
+        const row = await repository.findForUser(userId, conversationId);
         if (!row) return null;
-        const runs = await createRetrievalRunRepository(db).listForConversation(
-            userId,
-            id,
-        );
-        const messages = await repository.listMessagesForUser(userId, id);
+        const [retrievalRuns, generationRuns, messages] = await Promise.all([
+            retrievalRunRepository.listForConversation(userId, conversationId),
+            generationRunRepository.listForConversation(userId, conversationId),
+            repository.listMessagesForUser(userId, conversationId),
+        ]);
         return {
             title: row.title,
             messages: messages.map((message) => {
-                const retrieval = runs.get(message.id);
+                const retrieval = retrievalRuns.get(message.id);
+                const generation = generationRuns.get(message.id);
                 return {
                     id: message.id,
                     role: message.role,
                     content: message.content,
                     ...(retrieval ? { retrieval } : {}),
+                    ...(generation ? { generation } : {}),
                 };
             }),
         };
     }
-    async function sendMessage(
-        userId: string,
-        rawInput: SendMessageInput,
-    ): Promise<void> {
-        if (!userId.trim()) throw new ChatError('Sign in to send a message');
+
+    async function sendMessage(userId: string, rawInput: SendMessageInput): Promise<void> {
+        if (!userId.trim()) throw new ChatError("Sign in to send a message");
         const input = parseSendMessageInput(rawInput);
         const executionId = randomUUID();
-        const run = await db.transaction(async (tx) => {
+        const attempt = await beginAttempt(userId, input, executionId);
+        if (!attempt) return;
+        if (attempt.stage === "retrieval") {
+            const shouldGenerate = await completeRetrieval(userId, input, attempt, executionId);
+            if (!shouldGenerate) return;
+        }
+        await completeGeneration(userId, input, attempt, executionId);
+    }
+
+    async function beginAttempt(
+        userId: string,
+        input: ReturnType<typeof parseSendMessageInput>,
+        executionId: string,
+    ): Promise<ActiveAttempt | null> {
+        return db.transaction(async (tx): Promise<ActiveAttempt | null> => {
             const records = createChatRepository(tx);
-            const runs = createRetrievalRunRepository(tx);
+            const retrievalRuns = createRetrievalRunRepository(tx);
+            const generationRuns = createGenerationRunRepository(tx);
             await records.insertConversation({
                 id: input.conversationId,
                 userId,
                 title: input.content.slice(0, 80),
             });
-            const owned = await records.lockForUser(
-                userId,
-                input.conversationId,
-            );
-            if (!owned) throw new ChatError('Conversation not found');
-            const history = await records.listMessagesForUser(
-                userId,
-                input.conversationId,
-            );
-
+            if (!(await records.lockForUser(userId, input.conversationId))) {
+                throw new ChatError("Conversation not found");
+            }
+            const history = await records.listMessagesForUser(userId, input.conversationId);
             const existing = history.find((row) => row.id === input.messageId);
 
             if (existing) {
-                if (
-                    existing.role !== 'user' ||
-                    existing.content !== input.content
-                )
-                    throw new ChatError(
-                        'This message was already sent with different content',
-                    );
-                const previous = await runs.findForMessage(
-                    userId,
-                    input.messageId,
-                );
-                if (!previous) return null;
-                if (
-                    JSON.stringify(previous.scope) !==
-                    JSON.stringify(input.scope)
-                )
-                    throw new ChatError(
-                        'This message was already sent with a different document selection',
-                    );
-                if (previous.status === 'completed') return null;
-                if (
-                    previous.status === 'started' &&
-                    Date.now() - previous.startedAt.getTime() < 60_000
-                ) {
-                    throw new ChatError(
-                        'Retrieval is still running. Wait a moment, then retry.',
-                    );
+                if (existing.role !== "user" || existing.content !== input.content) {
+                    throw new ChatError("This message was already sent with different content");
                 }
-                await runs.update(previous.id, {
+                const previous = await retrievalRuns.findForMessage(userId, input.messageId);
+                if (!previous) return null;
+                if (JSON.stringify(previous.scope) !== JSON.stringify(input.scope)) {
+                    throw new ChatError("This message was already sent with a different document selection");
+                }
+
+                if (previous.status === "completed") {
+                    const generation = await generationRuns.findForRetrievalRun(userId, previous.id);
+                    if (generation?.status === "completed") return null;
+                    if (generation?.status === "started" && Date.now() - generation.startedAt.getTime() < STALE_ATTEMPT_MS) {
+                        throw new ChatError("Generation is still running. Wait a moment, then retry.");
+                    }
+                    if (generation) {
+                        await generationRuns.update(previous.id, {
+                            executionId,
+                            status: "started",
+                            promptVersion: GENERATION_PROMPT_VERSION,
+                            selectedChunkIds: [],
+                            provider: null,
+                            requestedModel: null,
+                            responseModel: null,
+                            inputTokens: null,
+                            outputTokens: null,
+                            totalTokens: null,
+                            latencyMs: null,
+                            errorMessage: null,
+                            startedAt: new Date(),
+                            finishedAt: null,
+                        });
+                    } else {
+                        await generationRuns.insert({
+                            retrievalRunId: previous.id,
+                            executionId,
+                            status: "started",
+                            promptVersion: GENERATION_PROMPT_VERSION,
+                        });
+                    }
+                    await records.updateMessage(userId, previous.responseMessageId, "Generating answer…");
+                    return { runId: previous.id, responseMessageId: previous.responseMessageId, stage: "generation" };
+                }
+
+                if (previous.status === "started" && Date.now() - previous.startedAt.getTime() < STALE_ATTEMPT_MS) {
+                    throw new ChatError("Retrieval is still running. Wait a moment, then retry.");
+                }
+                await retrievalRuns.update(previous.id, {
                     executionId,
-                    status: 'started',
+                    status: "started",
                     startedAt: new Date(),
                     finishedAt: null,
                     errorMessage: null,
                     timings: null,
                 });
-                await records.updateMessage(
-                    userId,
-                    previous.responseMessageId,
-                    'Retrieving chunks…',
-                );
-                return {
-                    id: previous.id,
-                    responseMessageId: previous.responseMessageId,
-                };
+                await records.updateMessage(userId, previous.responseMessageId, "Retrieving chunks…");
+                return { runId: previous.id, responseMessageId: previous.responseMessageId, stage: "retrieval" };
             }
+
             const sequence = (history.at(-1)?.sequence ?? -1) + 1;
             const responseMessageId = randomUUID();
             await records.insertMessages([
-                {
-                    id: input.messageId,
-                    conversationId: input.conversationId,
-                    role: 'user',
-                    content: input.content,
-                    sequence,
-                },
-                {
-                    id: responseMessageId,
-                    conversationId: input.conversationId,
-                    role: 'assistant',
-                    content: 'Retrieving chunks…',
-                    sequence: sequence + 1,
-                },
+                { id: input.messageId, conversationId: input.conversationId, role: "user", content: input.content, sequence },
+                { id: responseMessageId, conversationId: input.conversationId, role: "assistant", content: "Retrieving chunks…", sequence: sequence + 1 },
             ]);
-            const id = randomUUID();
-            await runs.insert({
-                id,
+            const runId = randomUUID();
+            await retrievalRuns.insert({
+                id: runId,
                 messageId: input.messageId,
                 responseMessageId,
                 executionId,
-                status: 'started',
+                status: "started",
                 query: input.content,
                 scope: input.scope,
                 limit: RETRIEVAL_LIMIT,
                 model: EMBEDDING_MODEL,
                 modelRevision: EMBEDDING_REVISION,
             });
-
             await records.updateActivity(userId, input.conversationId);
-            return { id, responseMessageId };
+            return { runId, responseMessageId, stage: "retrieval" };
         });
+    }
 
-        if (!run) return;
+    async function completeRetrieval(
+        userId: string,
+        input: SendMessageInput & { scope: NonNullable<SendMessageInput["scope"]> },
+        attempt: ActiveAttempt,
+        executionId: string,
+    ): Promise<boolean> {
         const started = performance.now();
         let result: RetrievalResult | null = null;
         let errorMessage: string | null = null;
         try {
-            result = await retrieval.retrieve(userId, {
-                query: input.content,
-                scope: input.scope,
-            });
+            result = await dependencies.retrieval.retrieve(userId, { query: input.content, scope: input.scope });
         } catch (error: unknown) {
-            errorMessage =
-                error instanceof RetrievalError
-                    ? error.message
-                    : 'Retrieval failed. Please retry.';
+            errorMessage = error instanceof RetrievalError ? error.message : "Retrieval failed. Please retry.";
         }
-        await db.transaction(async (tx) => {
+        const shouldGenerate = await db.transaction(async (tx) => {
             const records = createChatRepository(tx);
-            if (!(await records.lockForUser(userId, input.conversationId)))
-                return;
-            const runs = createRetrievalRunRepository(tx);
-            const current = await runs.findForMessage(userId, input.messageId);
-            if (!current || current.executionId !== executionId) return;
-            if (result)
-                await runs.insertCandidates(userId, run.id, result.chunks);
-            await runs.update(run.id, {
-                status: result ? 'completed' : 'failed',
+            if (!(await records.lockForUser(userId, input.conversationId))) return false;
+            const retrievalRuns = createRetrievalRunRepository(tx);
+            const current = await retrievalRuns.findForMessage(userId, input.messageId);
+            if (!current || current.executionId !== executionId) return false;
+            if (result) await retrievalRuns.insertCandidates(userId, attempt.runId, result.chunks);
+            await retrievalRuns.update(attempt.runId, {
+                status: result ? "completed" : "failed",
                 finishedAt: new Date(),
                 errorMessage,
                 timings: result?.timings ?? {
@@ -208,27 +209,75 @@ export function createChatService(
                     totalMs: Math.round(performance.now() - started),
                 },
             });
-            await records.updateMessage(
-                userId,
-                run.responseMessageId,
-                result
-                    ? GENERATION_NOTICE
-                    : `Generation is not implemented yet. ${errorMessage}`,
-            );
+            if (result) {
+                await createGenerationRunRepository(tx).insert({
+                    retrievalRunId: attempt.runId,
+                    executionId,
+                    status: "started",
+                    promptVersion: GENERATION_PROMPT_VERSION,
+                });
+                await records.updateMessage(userId, attempt.responseMessageId, "Generating answer…");
+            } else {
+                await records.updateMessage(userId, attempt.responseMessageId, errorMessage ?? "Retrieval failed. Please retry.");
+            }
+            await records.updateActivity(userId, input.conversationId);
+            return result !== null;
+        });
+        if (errorMessage) throw new ChatError(errorMessage);
+        return shouldGenerate;
+    }
+
+    async function completeGeneration(
+        userId: string,
+        input: SendMessageInput,
+        attempt: ActiveAttempt,
+        executionId: string,
+    ): Promise<void> {
+        const chunks = await retrievalRunRepository.listCandidatesForRun(userId, attempt.runId);
+        const started = performance.now();
+        let result: GenerationResult | null = null;
+        let errorMessage: string | null = null;
+        try {
+            result = await dependencies.generation.generate(input.content, chunks);
+        } catch (error: unknown) {
+            errorMessage = error instanceof GenerationError ? error.message : "Generation failed. Please retry.";
+        }
+        await db.transaction(async (tx) => {
+            const records = createChatRepository(tx);
+            if (!(await records.lockForUser(userId, input.conversationId))) return;
+            const generationRuns = createGenerationRunRepository(tx);
+            const current = await generationRuns.findForRetrievalRun(userId, attempt.runId);
+            if (!current || current.executionId !== executionId) return;
+            if (result && result.selectedChunkIds.length > 0) {
+                const available = await createRetrievalRunRepository(tx).listCandidatesForRun(userId, attempt.runId);
+                const availableIds = new Set(available.map((chunk) => chunk.chunkId));
+                if (result.selectedChunkIds.some((id) => !availableIds.has(id))) {
+                    result = null;
+                    errorMessage = "A document changed while generating the answer. Please retry.";
+                }
+            }
+            await generationRuns.update(attempt.runId, {
+                status: result ? "completed" : "failed",
+                finishedAt: new Date(),
+                errorMessage,
+                selectedChunkIds: result?.selectedChunkIds ?? [],
+                provider: result?.provider ?? null,
+                requestedModel: result?.requestedModel ?? null,
+                responseModel: result?.responseModel ?? null,
+                inputTokens: result?.inputTokens ?? null,
+                outputTokens: result?.outputTokens ?? null,
+                totalTokens: result?.totalTokens ?? null,
+                latencyMs: result ? result.latencyMs : Math.round(performance.now() - started),
+            });
+            await records.updateMessage(userId, attempt.responseMessageId, result?.answer ?? errorMessage ?? "Generation failed. Please retry.");
             await records.updateActivity(userId, input.conversationId);
         });
         if (errorMessage) throw new ChatError(errorMessage);
     }
-    async function deleteConversation(
-        userId: string,
-        id: string,
-    ): Promise<void> {
+
+    async function deleteConversation(userId: string, id: string): Promise<void> {
         await repository.deleteForUser(userId, parseConversationId(id));
     }
-    return {
-        listConversations,
-        getConversation,
-        sendMessage,
-        deleteConversation,
-    };
+
+    return { listConversations, getConversation, sendMessage, deleteConversation };
 }

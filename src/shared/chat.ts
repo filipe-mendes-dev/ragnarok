@@ -1,10 +1,12 @@
 import type { DocumentScope, RetrievalRunView } from "@/shared/retrieval";
+import type { GenerationRunView } from "@/shared/generation";
 
 export interface ChatMessage {
     id: string;
     role: "user" | "assistant";
     content: string;
     retrieval?: RetrievalRunView;
+    generation?: GenerationRunView;
 }
 export interface ConversationSummary {
     id: string;
