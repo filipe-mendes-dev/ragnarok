@@ -7,7 +7,7 @@ import type { GenerationResult, GenerationService } from "@/server/modules/gener
 import { createRetrievalRunRepository } from "@/server/modules/retrieval/retrieval-run-repository";
 import type { RetrievalService } from "@/server/modules/retrieval/retrieval-service";
 import { EMBEDDING_MODEL, EMBEDDING_REVISION, RETRIEVAL_LIMIT, RetrievalError } from "@/server/modules/retrieval/retrieval-contract";
-import type { ChatMessage, ConversationSummary, SendMessageInput } from "@/shared/chat";
+import { CHAT_STALE_ATTEMPT_MS, type ChatMessage, type ChatStreamEvent, type ConversationSummary, type SendMessageInput } from "@/shared/chat";
 import type { RetrievalResult } from "@/shared/retrieval";
 import { parseConversationId, parseSendMessageInput } from "./chat-input";
 import { createChatRepository } from "./chat-repository";
@@ -25,7 +25,10 @@ interface ActiveAttempt {
     stage: "retrieval" | "generation";
 }
 
-const STALE_ATTEMPT_MS = 60_000;
+interface SendMessageOptions {
+    onEvent?: (event: ChatStreamEvent) => void;
+    signal?: AbortSignal;
+}
 
 export function createChatService(db: Database, dependencies: ChatDependencies) {
     const repository = createChatRepository(db);
@@ -61,17 +64,26 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
         };
     }
 
-    async function sendMessage(userId: string, rawInput: SendMessageInput): Promise<void> {
+    async function sendMessage(userId: string, rawInput: unknown, options: SendMessageOptions = {}): Promise<void> {
         if (!userId.trim()) throw new ChatError("Sign in to send a message");
         const input = parseSendMessageInput(rawInput);
         const executionId = randomUUID();
         const attempt = await beginAttempt(userId, input, executionId);
-        if (!attempt) return;
+        if (!attempt) {
+            options.onEvent?.({ type: "completed", content: null });
+            return;
+        }
+        options.onEvent?.({ type: "accepted", messageId: input.messageId, responseMessageId: attempt.responseMessageId, stage: attempt.stage });
         if (attempt.stage === "retrieval") {
             const shouldGenerate = await completeRetrieval(userId, input, attempt, executionId);
-            if (!shouldGenerate) return;
+            if (!shouldGenerate) {
+                options.onEvent?.({ type: "completed", content: null });
+                return;
+            }
+            options.onEvent?.({ type: "stage", stage: "generation" });
         }
-        await completeGeneration(userId, input, attempt, executionId);
+        const content = await completeGeneration(userId, input, attempt, executionId, options);
+        options.onEvent?.({ type: "completed", content });
     }
 
     async function beginAttempt(
@@ -107,7 +119,7 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
                 if (previous.status === "completed") {
                     const generation = await generationRuns.findForRetrievalRun(userId, previous.id);
                     if (generation?.status === "completed") return null;
-                    if (generation?.status === "started" && Date.now() - generation.startedAt.getTime() < STALE_ATTEMPT_MS) {
+                    if (generation?.status === "started" && Date.now() - generation.startedAt.getTime() < CHAT_STALE_ATTEMPT_MS) {
                         throw new ChatError("Generation is still running. Wait a moment, then retry.");
                     }
                     if (generation) {
@@ -144,7 +156,7 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
                     return { runId: previous.id, responseMessageId: previous.responseMessageId, stage: "generation" };
                 }
 
-                if (previous.status === "started" && Date.now() - previous.startedAt.getTime() < STALE_ATTEMPT_MS) {
+                if (previous.status === "started" && Date.now() - previous.startedAt.getTime() < CHAT_STALE_ATTEMPT_MS) {
                     throw new ChatError("Retrieval is still running. Wait a moment, then retry.");
                 }
                 await retrievalRuns.update(previous.id, {
@@ -237,7 +249,8 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
         input: SendMessageInput,
         attempt: ActiveAttempt,
         executionId: string,
-    ): Promise<void> {
+        options: SendMessageOptions,
+    ): Promise<string | null> {
         const chunks = await retrievalRunRepository.listCandidatesForRun(userId, attempt.runId);
         const started = performance.now();
         let result: GenerationResult | null = null;
@@ -245,8 +258,14 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
         let errorCode: string | null = null;
         let errorMessage: string | null = null;
         try {
-            result = await dependencies.generation.generate(input.content, chunks, attempt.runId, executionId);
+            if (options.signal?.aborted) throw new GenerationError("cancelled");
+            result = await dependencies.generation.generate(input.content, chunks, attempt.runId, executionId, {
+                ...(options.signal ? { signal: options.signal } : {}),
+                ...(options.onEvent ? { onDelta: (text) => options.onEvent?.({ type: "delta", text }) } : {}),
+            });
+            if (options.signal?.aborted) throw new GenerationError("cancelled");
         } catch (error: unknown) {
+            result = null;
             if (error instanceof GenerationError) {
                 generationError = error;
                 errorCode = error.code;
@@ -263,12 +282,17 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
             errorMessage = generationError?.message ?? "Generation failed. Please retry.";
         }
         const observation = result ?? generationError?.metadata;
-        await db.transaction(async (tx) => {
+        const persisted = await db.transaction(async (tx) => {
             const records = createChatRepository(tx);
-            if (!(await records.lockForUser(userId, input.conversationId))) return;
+            if (!(await records.lockForUser(userId, input.conversationId))) return false;
             const generationRuns = createGenerationRunRepository(tx);
             const current = await generationRuns.findForRetrievalRun(userId, attempt.runId);
-            if (!current || current.executionId !== executionId) return;
+            if (!current || current.executionId !== executionId) return false;
+            if (options.signal?.aborted && result) {
+                result = null;
+                errorCode = "cancelled";
+                errorMessage = "Generation was stopped. You can retry this question.";
+            }
             if (result && result.selectedChunkIds.length > 0) {
                 const available = await createRetrievalRunRepository(tx).listCandidatesForRun(userId, attempt.runId);
                 const availableIds = new Set(available.map((chunk) => chunk.chunkId));
@@ -298,8 +322,10 @@ export function createChatService(db: Database, dependencies: ChatDependencies) 
             });
             await records.updateMessage(userId, attempt.responseMessageId, result?.answer ?? errorMessage ?? "Generation failed. Please retry.");
             await records.updateActivity(userId, input.conversationId);
+            return true;
         });
         if (errorMessage) throw new ChatError(errorMessage);
+        return persisted ? result?.answer ?? null : null;
     }
 
     async function deleteConversation(userId: string, id: string): Promise<void> {
