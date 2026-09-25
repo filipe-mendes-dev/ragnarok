@@ -1,23 +1,30 @@
+import { createParser } from "eventsource-parser";
 import { z } from "zod";
 import { getGenerationEnvironment } from "@/server/config/env";
-import { GenerationError, type GenerationMetadata, type TextGenerator } from "@/server/modules/generation/generation-contract";
+import { GenerationError, type GenerationMetadata, type TextGenerator, type TextGenerationRequest } from "@/server/modules/generation/generation-contract";
 
-const responseSchema = z.object({
+const usageSchema = z.object({
+    prompt_tokens: z.number().int().nonnegative().nullish(),
+    completion_tokens: z.number().int().nonnegative().nullish(),
+    completion_tokens_details: z.object({ reasoning_tokens: z.number().int().nonnegative().nullish() }).nullish(),
+    total_tokens: z.number().int().nonnegative().nullish(),
+});
+
+const chunkSchema = z.object({
     id: z.string().min(1).optional(),
-    model: z.string().min(1),
+    model: z.string().min(1).optional(),
     choices: z.array(z.object({
         finish_reason: z.string().nullable().optional(),
-        message: z.object({ content: z.string().nullable() }),
+        delta: z.object({ content: z.string().nullable().optional() }),
     })).min(1),
-    usage: z.object({
-        prompt_tokens: z.number().int().nonnegative().nullish(),
-        completion_tokens: z.number().int().nonnegative().nullish(),
-        completion_tokens_details: z.object({
-            reasoning_tokens: z.number().int().nonnegative().nullish(),
-        }).nullish(),
-        total_tokens: z.number().int().nonnegative().nullish(),
-    }).nullable().optional(),
+    usage: usageSchema.nullish(),
+    error: z.unknown().optional(),
 });
+
+function requestSignal(request: TextGenerationRequest): AbortSignal {
+    const timeout = AbortSignal.timeout(request.timeoutMs);
+    return request.signal ? AbortSignal.any([timeout, request.signal]) : timeout;
+}
 
 export function createOpenRouterTextGenerator(fetcher: typeof fetch = fetch): TextGenerator {
     return {
@@ -53,33 +60,72 @@ export function createOpenRouterTextGenerator(fetcher: typeof fetch = fetch): Te
                         model: environment.GENERATION_MODEL,
                         messages: request.messages,
                         max_tokens: request.maxOutputTokens,
-                        stream: false,
+                        stream: true,
                     }),
-                    signal: AbortSignal.timeout(request.timeoutMs),
+                    signal: requestSignal(request),
                     cache: "no-store",
                     redirect: "error",
                 });
                 metadata.httpStatus = response.status;
                 if (!response.ok) throw new GenerationError("unavailable", metadata);
-                const body: unknown = await response.json();
-                const parsed = responseSchema.safeParse(body);
-                if (!parsed.success) {
-                    invalidFields = parsed.error.issues.map((issue) => issue.path.join("."));
-                    throw new GenerationError("invalid_response", metadata);
+                if (!response.body) throw new GenerationError("invalid_response", metadata);
+
+                let answer = "";
+                let completed = false;
+                const parser = createParser({
+                    onEvent(event) {
+                        if (event.data === "[DONE]") {
+                            completed = true;
+                            return;
+                        }
+                        let payload: unknown;
+                        try {
+                            payload = JSON.parse(event.data) as unknown;
+                        } catch {
+                            throw new GenerationError("invalid_response", metadata);
+                        }
+                        const parsed = chunkSchema.safeParse(payload);
+                        if (!parsed.success) {
+                            invalidFields = parsed.error.issues.map((issue) => issue.path.join("."));
+                            throw new GenerationError("invalid_response", metadata);
+                        }
+                        const chunk = parsed.data;
+                        if (chunk.error !== undefined) throw new GenerationError("unavailable", metadata);
+                        if (chunk.id) metadata.providerResponseId = chunk.id;
+                        if (chunk.model) metadata.responseModel = chunk.model;
+                        const choice = chunk.choices[0];
+                        if (choice?.finish_reason) metadata.finishReason = choice.finish_reason;
+                        const delta = choice?.delta.content;
+                        if (delta) {
+                            answer += delta;
+                            request.onDelta?.(delta);
+                        }
+                        if (chunk.usage) {
+                            metadata.inputTokens = chunk.usage.prompt_tokens ?? null;
+                            metadata.outputTokens = chunk.usage.completion_tokens ?? null;
+                            metadata.reasoningTokens = chunk.usage.completion_tokens_details?.reasoning_tokens ?? null;
+                            metadata.totalTokens = chunk.usage.total_tokens ?? null;
+                        }
+                    },
+                });
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                try {
+                    while (true) {
+                        const next = await reader.read();
+                        if (next.done) break;
+                        parser.feed(decoder.decode(next.value, { stream: true }));
+                    }
+                    parser.feed(decoder.decode());
+                } finally {
+                    if (!completed) await reader.cancel().catch(() => {});
+                    reader.releaseLock();
                 }
-                const choice = parsed.data.choices[0];
-                metadata.responseModel = parsed.data.model;
-                metadata.providerResponseId = parsed.data.id ?? null;
-                metadata.finishReason = choice?.finish_reason ?? null;
-                metadata.inputTokens = parsed.data.usage?.prompt_tokens ?? null;
-                metadata.outputTokens = parsed.data.usage?.completion_tokens ?? null;
-                metadata.reasoningTokens = parsed.data.usage?.completion_tokens_details?.reasoning_tokens ?? null;
-                metadata.totalTokens = parsed.data.usage?.total_tokens ?? null;
                 metadata.latencyMs = Math.round(performance.now() - started);
-                const answer = choice?.message.content?.trim();
-                if (choice?.finish_reason === "length") throw new GenerationError("output_limit", metadata);
-                if (!answer) throw new GenerationError("empty_response", metadata);
-                if (choice?.finish_reason !== "stop") throw new GenerationError("invalid_response", metadata);
+                if (!completed || !metadata.responseModel) throw new GenerationError("invalid_response", metadata);
+                if (metadata.finishReason === "length") throw new GenerationError("output_limit", metadata);
+                if (!answer.trim()) throw new GenerationError("empty_response", metadata);
+                if (metadata.finishReason !== "stop") throw new GenerationError("invalid_response", metadata);
                 console.info(JSON.stringify({
                     event: "generation.openrouter",
                     outcome: "completed",
@@ -88,16 +134,12 @@ export function createOpenRouterTextGenerator(fetcher: typeof fetch = fetch): Te
                     maxOutputTokens: request.maxOutputTokens,
                     ...metadata,
                 }));
-                return {
-                    ...metadata,
-                    text: answer,
-                    responseModel: parsed.data.model,
-                };
+                return { ...metadata, text: answer.trim(), responseModel: metadata.responseModel };
             } catch (error: unknown) {
                 metadata.latencyMs = Math.round(performance.now() - started);
                 const failure = error instanceof GenerationError
                     ? error
-                    : new GenerationError(error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "unavailable", metadata);
+                    : new GenerationError(request.signal?.aborted ? "cancelled" : error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "unavailable", metadata);
                 console.error(JSON.stringify({
                     event: "generation.openrouter",
                     outcome: "failed",
