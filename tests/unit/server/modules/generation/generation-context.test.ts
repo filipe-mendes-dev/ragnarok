@@ -20,7 +20,7 @@ describe("buildGenerationContext", () => {
     it("orders excerpts by retrieval rank and keeps their source locations", () => {
         const context = buildGenerationContext("When can I cancel?", [createChunk(2, "Later"), createChunk(1, "Earlier")]);
         expect(context.selectedChunkIds).toEqual(["chunk-1", "chunk-2"]);
-        expect(context.messages[1]?.content).toContain("Source 1: Document 1 (page 1)\nEarlier");
+        expect(context.messages[1]?.content).toContain("Source [S1]: Document 1 (page 1)\nEarlier");
         const prompt = context.messages[1]?.content ?? "";
         expect(prompt.indexOf("Earlier")).toBeLessThan(prompt.indexOf("Later"));
     });
@@ -29,5 +29,11 @@ describe("buildGenerationContext", () => {
         const context = buildGenerationContext("Question", [createChunk(1, "A".repeat(11_950)), createChunk(2, "B".repeat(200))]);
         expect(context.selectedChunkIds).toEqual(["chunk-1"]);
         expect(context.messages[1]?.content).not.toContain("B".repeat(200));
+    });
+
+    it("numbers included sources contiguously after skipping an oversized chunk", () => {
+        const context = buildGenerationContext("Question", [createChunk(1, "A".repeat(12_000)), createChunk(2, "Short evidence")]);
+        expect(context.selectedChunkIds).toEqual(["chunk-2"]);
+        expect(context.messages[1]?.content).toContain("Source [S1]: Document 2 (page 2)");
     });
 });
