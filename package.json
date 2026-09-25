@@ -30,20 +30,21 @@
         "check": "npm run lint && npm run typecheck && npm run test && npm run test:integration"
     },
     "dependencies": {
-        "amqplib": "^2.0.1",
         "@aws-sdk/client-s3": "^3.1127.0",
         "@aws-sdk/s3-request-presigner": "^3.1127.0",
+        "amqplib": "^2.0.1",
         "better-auth": "^1.7.3",
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.2",
+        "eventsource-parser": "^4.1.1",
         "next": "16.3.4",
         "pg": "^8.23.0",
         "react": "19.2.8",
         "react-dom": "19.2.8",
+        "react-markdown": "^10.1.0",
         "zod": "^4.5.4"
     },
     "devDependencies": {
-        "testcontainers": "^12.1.0",
         "@tailwindcss/postcss": "^4",
         "@testcontainers/postgresql": "^12.1.0",
         "@types/node": "^24.13.3",
@@ -55,6 +56,7 @@
         "eslint": "^9",
         "eslint-config-next": "16.3.4",
         "tailwindcss": "^4",
+        "testcontainers": "^12.1.0",
         "typescript": "^5",
         "vitest": "^4.1.11"
     }
