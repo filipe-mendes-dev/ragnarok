@@ -12,15 +12,15 @@ export function GenerationStatus({ generation, retrieval, pending, onRetry }: Ge
     if (retrieval.status !== "completed") return null;
     if (!generation || generation.status === "failed") {
         return <div className="mt-3 space-y-2 text-sm">
-            <p className="text-muted-foreground">{generation?.errorMessage ?? "This answer has not been generated yet."}</p>
-            <button type="button" disabled={pending} onClick={() => onRetry(retrieval)} className="min-h-11 rounded-control border border-border px-3 hover:bg-surface-muted disabled:opacity-50">{generation ? "Retry generation" : "Generate answer"}</button>
+            {!generation && <p className="text-muted-foreground">This answer has not been generated yet.</p>}
+            <button type="button" disabled={pending || (generation !== undefined && !generation.retryable)} onClick={() => onRetry(retrieval)} className="min-h-11 rounded-control border border-border px-3 hover:bg-surface-muted disabled:opacity-50">{generation ? "Retry generation" : "Generate answer"}</button>
             {generation && <GenerationDetails generation={generation} />}
         </div>;
     }
     if (generation.status === "started") {
         return <div className="mt-3 space-y-2 text-sm">
             <p className="text-muted-foreground">Generation is running. If it was interrupted, retry after one minute.</p>
-            <button type="button" disabled={pending} onClick={() => onRetry(retrieval)} className="min-h-11 rounded-control border border-border px-3 hover:bg-surface-muted disabled:opacity-50">Retry generation</button>
+            <button type="button" disabled={pending || !generation.retryable} onClick={() => onRetry(retrieval)} className="min-h-11 rounded-control border border-border px-3 hover:bg-surface-muted disabled:opacity-50">Retry generation</button>
         </div>;
     }
     return <GenerationDetails generation={generation} />;
@@ -28,7 +28,7 @@ export function GenerationStatus({ generation, retrieval, pending, onRetry }: Ge
 
 function GenerationDetails({ generation }: { generation: GenerationRunView }) {
     return <details className="mt-3 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-        <summary className="cursor-pointer py-2">Generation details</summary>
+        <summary className="min-h-11 cursor-pointer py-3 focus-visible:outline-2 focus-visible:outline-accent">Generation details</summary>
         <dl className="space-y-2">
             <div><dt>Trace ID</dt><dd>{generation.traceId}</dd></div>
             <div><dt>Attempt ID</dt><dd>{generation.attemptId}</dd></div>
