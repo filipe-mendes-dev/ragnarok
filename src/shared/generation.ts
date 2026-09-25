@@ -2,7 +2,9 @@ export interface GenerationRunView {
     traceId: string;
     attemptId: string;
     status: "started" | "completed" | "failed";
+    retryable: boolean;
     promptVersion: string;
+    selectedChunkIds: string[];
     provider: string | null;
     requestedModel: string | null;
     responseModel: string | null;

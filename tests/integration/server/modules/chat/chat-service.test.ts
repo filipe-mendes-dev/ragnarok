@@ -17,6 +17,7 @@ import { createTextDocumentFixture } from "../../../../fixtures/documents";
 import { createChunkFixture } from "../../../../fixtures/retrieval";
 import { createChunkSeeder } from "../../../support/seeders/chunks";
 import { seedDocument } from "../../../support/seeders/documents";
+import type { ChatStreamEvent } from "@/shared/chat";
 
 const { database, databasePool } = createIntegrationDatabase();
 const users = createUserSeeder(database);
@@ -28,7 +29,7 @@ const retrieval = createRetrievalService(database, embedQueryFixture);
 const generator: TextGenerator = {
     async generateText() {
         return {
-            text: "Subscriptions can be cancelled at any time.",
+            text: "Subscriptions can be cancelled at any time. [S1]",
             provider: "test-provider",
             requestedModel: "test-model",
             responseModel: "test-model",
@@ -150,16 +151,79 @@ describe("chatService.sendMessage", () => {
         await service.sendMessage(owner.id, input);
 
         const messages = await database.select().from(message).where(eq(message.conversationId, input.conversationId)).orderBy(message.sequence);
-        expect(messages[1]?.content).toBe("Subscriptions can be cancelled at any time.");
+        expect(messages[1]?.content).toBe("Subscriptions can be cancelled at any time. [S1]");
         expect(await database.select().from(retrievalRun).where(eq(retrievalRun.messageId, input.messageId)))
             .toMatchObject([{ status: "completed" }]);
         expect(await database.select().from(generationRun)).toMatchObject([{
-            status: "completed", promptVersion: "v1", selectedChunkIds: [chunk.id],
+            status: "completed", promptVersion: "v2", selectedChunkIds: [chunk.id],
             provider: "test-provider", responseModel: "test-model", inputTokens: 35,
             outputTokens: 9, totalTokens: 44, latencyMs: 12,
         }]);
         expect((await service.getConversation(owner.id, input.conversationId))?.messages[1]?.generation)
             .toMatchObject({ status: "completed", responseModel: "test-model", totalTokens: 44 });
+    });
+    it("streams provisional text and confirms only the saved final answer", async () => {
+        const owner = await users.seed();
+        const source = createTextDocumentFixture({ userId: owner.id, status: "completed" });
+        await seedDocument(database, source);
+        const config = await chunks.seedConfig();
+        await chunks.seed(createChunkFixture(source.id, config));
+        const input = { conversationId: randomUUID(), messageId: randomUUID(), content: "When can I cancel?" };
+        const events: ChatStreamEvent[] = [];
+        const streaming = createChatService(database, {
+            retrieval,
+            generation: createGenerationService({ async generateText(request) {
+                request.onDelta?.("Subscriptions can ");
+                request.onDelta?.("be cancelled at any time. [S1]");
+                return generator.generateText(request);
+            } }),
+        });
+
+        await streaming.sendMessage(owner.id, input, { onEvent: (event) => events.push(event) });
+
+        expect(events.map((event) => event.type)).toEqual(["accepted", "stage", "delta", "delta", "completed"]);
+        const final = events.at(-1);
+        expect(final).toEqual({ type: "completed", content: "Subscriptions can be cancelled at any time. [S1]" });
+        const saved = await database.select().from(message).where(eq(message.conversationId, input.conversationId)).orderBy(message.sequence);
+        expect(saved[1]?.content).toBe(final?.type === "completed" ? final.content : null);
+    });
+
+    it("persists a cancelled attempt without invoking generation", async () => {
+        const owner = await users.seed();
+        const input = { conversationId: randomUUID(), messageId: randomUUID(), content: "Question" };
+        let called = false;
+        const cancelling = createChatService(database, {
+            retrieval,
+            generation: createGenerationService({ async generateText(request) { called = true; return generator.generateText(request); } }),
+        });
+        const abort = new AbortController();
+        abort.abort();
+
+        await expect(cancelling.sendMessage(owner.id, input, { signal: abort.signal })).rejects.toEqual(new ChatError("Generation was stopped. You can retry this question."));
+        expect(called).toBe(false);
+        expect(await database.select().from(message).where(eq(message.conversationId, input.conversationId))).toHaveLength(2);
+        expect(await database.select().from(generationRun)).toMatchObject([{ status: "failed", errorCode: "cancelled" }]);
+    });
+    it("does not save an answer if the client stops while the provider finishes", async () => {
+        const owner = await users.seed();
+        const source = createTextDocumentFixture({ userId: owner.id, status: "completed" });
+        await seedDocument(database, source);
+        const config = await chunks.seedConfig();
+        await chunks.seed(createChunkFixture(source.id, config));
+        const input = { conversationId: randomUUID(), messageId: randomUUID(), content: "When can I cancel?" };
+        const abort = new AbortController();
+        const cancelling = createChatService(database, {
+            retrieval,
+            generation: createGenerationService({ async generateText(request) {
+                abort.abort();
+                return generator.generateText(request);
+            } }),
+        });
+
+        await expect(cancelling.sendMessage(owner.id, input, { signal: abort.signal })).rejects.toEqual(new ChatError("Generation was stopped. You can retry this question."));
+        const saved = await database.select().from(message).where(eq(message.conversationId, input.conversationId)).orderBy(message.sequence);
+        expect(saved[1]?.content).toBe("Generation was stopped. You can retry this question.");
+        expect(await database.select().from(generationRun)).toMatchObject([{ status: "failed", errorCode: "cancelled" }]);
     });
     it("retries failed generation without repeating completed retrieval", async () => {
         const owner = await users.seed();
@@ -212,7 +276,7 @@ describe("chatService.sendMessage", () => {
         expect(await database.select().from(message).where(eq(message.conversationId, input.conversationId)))
             .toHaveLength(2);
         expect((await service.getConversation(owner.id, input.conversationId))?.messages[1])
-            .toMatchObject({ content: "Subscriptions can be cancelled at any time.", generation: { status: "completed" } });
+            .toMatchObject({ content: "Subscriptions can be cancelled at any time. [S1]", generation: { status: "completed" } });
         expect(await database.select().from(generationRun)).toMatchObject([{
             status: "completed", errorCode: null, providerResponseId: "test-response", finishReason: "stop", reasoningTokens: 2,
         }]);

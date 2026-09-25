@@ -542,7 +542,7 @@ Detailed deferred work and completion conditions are tracked in [todo.md](todo.m
 
 ## Delivery sequencing
 
-The text/PDF ingestion flow and semantic retrieval share local embeddings. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Linked citations remain unimplemented. Publication recovery, durable retry limits, document retry UI, shutdown
+The text/PDF ingestion flow and semantic retrieval share local embeddings. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Validated source labels link to saved evidence snapshots, and a POST route streams progress and answer text over SSE. Publication recovery, durable retry limits, document retry UI, shutdown
 supervision, and broader failure testing are deferred until that product path works,
 and remain required reliability follow-ups before public deployment. Preserve the
 existing ownership, revision, atomic-write, and execution-limit protections. Continue

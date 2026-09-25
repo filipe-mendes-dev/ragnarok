@@ -1,7 +1,8 @@
 import type { RetrievedChunk } from "@/shared/retrieval";
+import { citationNumbers } from "@/shared/citations";
 import { getGenerationSettings, type GenerationSettings } from "@/server/config/env";
 import { buildGenerationContext, GENERATION_PROMPT_VERSION } from "./generation-context";
-import type { TextGenerator } from "./generation-contract";
+import { GenerationError, type GenerationMetadata, type TextGenerator } from "./generation-contract";
 
 const ABSTENTION = "I cannot answer that from the available documents.";
 
@@ -22,8 +23,21 @@ export interface GenerationResult {
     latencyMs: number | null;
 }
 
+export interface GenerationOptions {
+    onDelta?: (text: string) => void;
+    signal?: AbortSignal;
+}
+
+function validateCitations(answer: string, selectedChunkIds: string[], metadata: GenerationMetadata): void {
+    if (answer === ABSTENTION) return;
+    const numbers = citationNumbers(answer);
+    if (numbers.length === 0 || numbers.some((number) => number > selectedChunkIds.length)) {
+        throw new GenerationError("invalid_citation", metadata);
+    }
+}
+
 export function createGenerationService(generator: TextGenerator, settings: GenerationSettings = getGenerationSettings()) {
-    async function generate(question: string, chunks: RetrievedChunk[], traceId?: string, attemptId?: string): Promise<GenerationResult> {
+    async function generate(question: string, chunks: RetrievedChunk[], traceId?: string, attemptId?: string, options: GenerationOptions = {}): Promise<GenerationResult> {
         const context = buildGenerationContext(question, chunks);
         if (context.selectedChunkIds.length === 0) {
             return {
@@ -49,7 +63,10 @@ export function createGenerationService(generator: TextGenerator, settings: Gene
             timeoutMs: settings.timeoutMs,
             ...(traceId ? { traceId } : {}),
             ...(attemptId ? { attemptId } : {}),
+            ...(options.onDelta ? { onDelta: options.onDelta } : {}),
+            ...(options.signal ? { signal: options.signal } : {}),
         });
+        validateCitations(response.text, context.selectedChunkIds, response);
         return {
             answer: response.text,
             promptVersion: GENERATION_PROMPT_VERSION,

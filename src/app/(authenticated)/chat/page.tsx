@@ -10,10 +10,11 @@ export default async function ChatPage() {
         retrievalService.listDocuments(user.id),
     ]);
 
+    const conversationId = randomUUID();
     return (
         <ChatView
-            key="new"
-            conversationId={randomUUID()}
+            key={conversationId}
+            conversationId={conversationId}
             conversations={conversations}
             documents={documents}
             messages={[]}

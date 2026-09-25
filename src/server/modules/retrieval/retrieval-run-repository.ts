@@ -4,6 +4,7 @@ import { conversation, message } from '@/server/db/schema/conversations';
 import { document } from '@/server/db/schema/documents';
 import { retrievalCandidate, retrievalRun } from '@/server/db/schema/retrieval';
 import type { RetrievalRunView, RetrievedChunk } from '@/shared/retrieval';
+import { CHAT_STALE_ATTEMPT_MS } from '@/shared/chat';
 
 type RunDatabase = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>;
 export type RetrievalRunRow = typeof retrievalRun.$inferSelect;
@@ -66,6 +67,7 @@ export function createRetrievalRunRepository(db: RunDatabase) {
                 id: run.id,
                 messageId: run.messageId,
                 status: run.status,
+                retryable: run.status !== 'started' || Date.now() - run.startedAt.getTime() >= CHAT_STALE_ATTEMPT_MS,
                 query: run.query,
                 scope: run.scope,
                 limit: run.limit,

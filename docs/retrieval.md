@@ -22,13 +22,22 @@ lexical search, similarity cutoff, reranking, diversity selection, or context bu
 A nearest result is not proof of relevance or sufficient evidence. Cosine similarity
 is displayed as a score, never a confidence percentage.
 
-Generation builds a versioned plain-text prompt from the saved, owned retrieval
+Generation builds a versioned prompt from the saved, owned retrieval
 snapshots. It includes whole excerpts in rank order up to a 12,000-character context
 budget. If none fit, the service abstains without calling OpenRouter. Otherwise the
 server sends the question and excerpts to the configured `GENERATION_MODEL` through
-OpenRouter. The prompt asks for an answer supported by the excerpts or an abstention;
-it does not validate factual support. Citation extraction and linked sources remain
-open work.
+OpenRouter. Selected excerpts receive contiguous `[S1]`, `[S2]`, and later labels.
+The prompt asks for cited Markdown or an exact abstention. The service rejects
+missing or out-of-range labels, but it does not validate factual support. The UI
+shows cited source snapshots before the full retrieval trace. Deleted source
+snapshots produce unavailable labels in historical answers.
+
+OpenRouter and the browser-facing POST route use SSE. The provider adapter gathers
+the full response, finish reason, and final usage while forwarding text increments.
+The browser displays provisional plain text, then reloads the saved answer and
+renders its Markdown and validated citation links. Stream errors and cancellation
+end in safe persisted failure states; a disconnected browser reloads durable state
+and can retry the same message ID.
 
 ## Shared embedding runtime
 
@@ -74,8 +83,9 @@ Evidence snapshots preserve text/title/page/revision after re-ingestion replaces
 chunks. Deleting a document cascades its evidence snapshots; history also hides
 snapshots as soon as deletion is pending. The final save rejects an answer when its
 selected source is no longer available at that check. Deleting a conversation cascades
-messages, runs, and candidates. Plain answers and generation metadata are persisted;
-answer citations are not yet implemented.
+messages, runs, and candidates. Answers with source labels and generation metadata
+are persisted; the UI derives links from the saved selected chunk IDs and owned
+candidate snapshots.
 
 ## Regression benchmark
 

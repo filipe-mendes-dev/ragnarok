@@ -4,6 +4,7 @@ import { conversation, message } from "@/server/db/schema/conversations";
 import { generationRun } from "@/server/db/schema/generation";
 import { retrievalRun } from "@/server/db/schema/retrieval";
 import type { GenerationRunView } from "@/shared/generation";
+import { CHAT_STALE_ATTEMPT_MS } from "@/shared/chat";
 
 type GenerationRunDatabase = Pick<Database, "select" | "insert" | "update">;
 export type GenerationRunRow = typeof generationRun.$inferSelect;
@@ -29,7 +30,9 @@ export function createGenerationRunRepository(db: GenerationRunDatabase) {
             traceId: run.retrievalRunId,
             attemptId: run.executionId,
             status: run.status,
+            retryable: run.status !== "started" || Date.now() - run.startedAt.getTime() >= CHAT_STALE_ATTEMPT_MS,
             promptVersion: run.promptVersion,
+            selectedChunkIds: run.selectedChunkIds,
             provider: run.provider,
             requestedModel: run.requestedModel,
             responseModel: run.responseModel,
