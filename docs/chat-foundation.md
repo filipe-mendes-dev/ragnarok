@@ -12,9 +12,10 @@ not write an empty record. Deleting a conversation cascades to its messages.
 
 The chat service reserves a question, assistant status message, and retrieval run
 in one short transaction. It embeds and searches outside that transaction, then
-records results or safe failure in another transaction. Completed runs display
-retrieved chunks and state that generation is not implemented. Older `Answers coming
-later` messages remain historical placeholders and must not become generation context.
+records results or safe failure in another transaction. Generation streams
+provisional text and saves its final answer, selected evidence IDs, metadata, and
+safe failure state. Older `Answers coming later` messages remain historical
+placeholders and must not become generation context.
 
 The browser retains a message UUID across retries of the same draft. The service
 locks the owned conversation before assigning sequence numbers. Concurrent sends
@@ -23,9 +24,10 @@ persist a failed run; retrying reuses its message IDs. A started run can be recl
 after one minute if interrupted. An execution ID rejects late completion from an
 older attempt. Ownership is enforced in repository queries.
 
-The initial implementation loads the full conversation list and message history.
-Document selection, retrieved evidence snapshots, timings, and safe retrieval errors
-are implemented. Pagination, generation, and streaming remain deferred. See
+The chat loads the full conversation list and message history. Document selection,
+retrieved evidence snapshots, timings, and safe retrieval errors are implemented.
+Generation uses validated source labels, and the browser receives SSE from an
+authenticated POST route. Pagination remains deferred. See
 [retrieval.md](retrieval.md) for the current contract and limitations.
 
 ## UI
@@ -36,6 +38,11 @@ Desktop history lives in a sidebar; mobile history opens in a keyboard-accessibl
 drawer. Long text wraps, Enter sends, Shift+Enter inserts a newline, and failed
 sends retain the draft. Scrolling follows new messages only near the bottom or
 after the user sends a message.
+Completed answers render safe Markdown and link citations to compact source rows.
+Opening a row reveals its saved excerpt. The source rows precede the full
+retrieved candidate list. During generation, the UI shows plain provisional text
+and a Stop control; completion replaces it with the saved answer. A disconnected
+browser reloads persisted state and retries with the same message ID when needed.
 
 ## Document removal
 

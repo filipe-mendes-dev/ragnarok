@@ -1,6 +1,6 @@
 # RAGnarok backlog
 
-Last updated: 2026-09-23
+Last updated: 2026-09-25
 
 Record deferred work here when it is agreed. The [roadmap](roadmap.md) owns phase
 order; this file owns the details of follow-ups. An unchecked item is unfinished,
@@ -13,6 +13,15 @@ deferred unless explicitly stated.
 
 ## Before public deployment
 
+- [ ] **Harden the chat stream request boundary.** The route checks the session,
+  and the chat service checks resource ownership. The origin check accepts a
+  missing Origin header and compares hosts only. Define the allowed origin
+  policy for the deployed HTTPS proxy, including forwarded-host handling. Test
+  unauthenticated, cross-origin, and cross-user requests through that configuration.
+- [ ] **Limit chat generation usage.** Set per-user request and concurrent-stream
+  limits, plus a practical generation budget. Enforce them across both web
+  containers so a signed-in client cannot bypass them by choosing an instance.
+  Verify rejection and recovery without charging for requests that never start.
 - [ ] **Recover missing publications.** Saving a source and publishing to RabbitMQ
   are separate commits. Choose an outbox or reconciliation approach and verify
   that a crash or broker outage cannot leave uploaded/queued work stranded.
@@ -46,28 +55,37 @@ deferred unless explicitly stated.
 
 ## Answer citations
 
-- [ ] Return source identifiers with generated answers, validate that each identifier
-  maps to selected evidence, and link them to the saved chunk snapshots. Keep the
-  current plain-answer path until that mapping and its deletion behavior are tested.
+- [x] Return source identifiers with generated answers, validate each identifier
+  against selected evidence, and link them to saved chunk snapshots. Deleted
+  documents leave an unavailable source label in historical answers.
 
 ## Conversation streaming
 
-- [ ] **Stream assistant responses.** Display answer
-  text incrementally instead of waiting for the complete response. Evaluate SSE
-  first; use WebSockets only if bidirectional real-time communication is needed.
-  Keep message submission and durable conversation history separate from the
-  stream transport. Complete when authenticated, ownership-checked streams support
-  cancellation, explicit completion/errors, and recovery after disconnects without
-  duplicate messages. Verify that persisted answers match the displayed result
-  and that streaming works through the production reverse proxy.
+- [x] **Stream assistant responses.** An authenticated POST route relays SSE
+  events while the chat service owns durable messages and retries. The UI shows
+  provisional text, supports Stop, handles explicit completion/errors, and reloads
+  saved state after a disconnect. Reused message IDs prevent duplicate messages;
+  focused tests compare the completion event with the persisted answer.
+- [ ] **Review chat service generation workflow naming and size.**
+  `completeGeneration` both calls the generation service and persists the attempt
+  outcome, so its name suggests a narrower responsibility. In a later branch,
+  rename it to describe the full workflow and assess whether extracting focused
+  service helpers makes the retry and persistence steps easier to follow. Keep
+  workflow decisions and transaction ownership in the service, and verify the
+  existing success, failure, cancellation, and retry behavior after any refactor.
+- [ ] **Verify production streaming.** Check incremental delivery and cancellation
+  through the planned Nginx load balancer and both web containers. Configure HTTPS,
+  stream buffering, timeouts, and request limits, then verify that completed and
+  aborted streams behave as expected. Its configuration is not in this repository yet.
 
 ## Conversation presentation and scale
 
-- [ ] **Render assistant answers as Markdown.** The model can return lists and
-  emphasis, but chat currently displays their markers as text. Render a safe subset
-  of Markdown with raw HTML disabled while keeping the saved answer unchanged.
-  Verify lists, emphasis, long text, and narrow screens. Keep source labels as
-  plain text until citation identifiers are validated and linked.
+- [x] **Render assistant answers as Markdown.** Completed answers show paragraphs,
+  lists, emphasis, and code. Raw HTML and images are disabled; model links remain
+  plain text. Validated citation labels link to saved evidence. The stored answer
+  remains unchanged, and provisional streamed text stays plain until completion.
+- [ ] **Review chat on narrow screens.** Verify long answers, document titles,
+  source excerpts, and the composer at 320px in a signed-in browser session.
 - [ ] **Virtualize long conversations.** Measure rendering with a representative
   long history, then render only the visible messages if needed. Preserve scroll
   position, scroll-to-latest behavior, keyboard access, and variable-height answers

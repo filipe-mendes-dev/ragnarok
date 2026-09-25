@@ -138,8 +138,8 @@ Target: Day 6
 - [x] Keep `retrieve()` and `generate()` as separate boundaries.
 - [x] Implement explicit, versioned context and prompt construction.
 - [x] Add a bounded context budget and source identifiers in the prompt.
-- [x] Generate plain answers from supplied evidence with abstention instructions and a deterministic no-evidence response.
-- [ ] Validate that returned citation identifiers map to selected chunks.
+- [x] Generate answers from supplied evidence with abstention instructions and a deterministic no-evidence response.
+- [x] Validate returned citation identifiers against selected chunks and link them to saved evidence.
 
 Gate: the UI produces an answer whose citations open the exact source evidence, and an unsupported question abstains.
 
