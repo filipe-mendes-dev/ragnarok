@@ -32,6 +32,7 @@ export interface RetrievalRunView {
     id: string;
     messageId: string;
     status: "started" | "completed" | "failed";
+    retryable: boolean;
     query: string;
     scope: DocumentScope;
     limit: number;
