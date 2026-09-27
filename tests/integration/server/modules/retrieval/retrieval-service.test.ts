@@ -15,7 +15,7 @@ const { database, databasePool } = createIntegrationDatabase();
 const users = createUserSeeder(database);
 const chunks = createChunkSeeder(database);
 async function embedQueryFixture(): Promise<QueryEmbedding> {
-    return { vector: [1, ...Array<number>(383).fill(0)], model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION };
+    return { vector: [1, ...Array<number>(1535).fill(0)], model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION };
 }
 const service = createRetrievalService(database, embedQueryFixture);
 afterEach(async () => { await users.cleanup(); await chunks.cleanup(); });
@@ -28,7 +28,7 @@ describe("retrievalService.retrieve", () => {
         const config = await chunks.seedConfig();
         const eligible = createTextDocumentFixture({ userId: owner.id, status: "completed" });
         await seedDocument(database, eligible);
-        const expected = createChunkFixture(eligible.id, config, { embedding: [0.8, 0.6, ...Array<number>(382).fill(0)] });
+        const expected = createChunkFixture(eligible.id, config, { embedding: [0.8, 0.6, ...Array<number>(1534).fill(0)] });
         await chunks.seed(expected);
         for (const state of ["foreign", "processing", "failed", "stale", "model", "revision", "null"] as const) {
             const source = createTextDocumentFixture({ userId: state === "foreign" ? other.id : owner.id,
@@ -55,7 +55,7 @@ describe("retrievalService.retrieve", () => {
         const expectedIds: string[] = [];
         for (let ordinal = 0; ordinal < 7; ordinal++) {
             const id = randomUUID(); expectedIds.push(id);
-            await chunks.seed(createChunkFixture(source.id, config, { id, ordinal, embedding: [1, ordinal, ...Array<number>(382).fill(0)] }));
+            await chunks.seed(createChunkFixture(source.id, config, { id, ordinal, embedding: [1, ordinal, ...Array<number>(1534).fill(0)] }));
         }
         const result = await service.retrieve(owner.id, { query: "question" });
         expect(result.chunks.map((row) => row.chunkId)).toEqual(expectedIds.slice(0, 5));

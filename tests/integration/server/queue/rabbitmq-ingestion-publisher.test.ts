@@ -12,8 +12,9 @@ import { createDocumentService } from "@/server/modules/documents/document-servi
 import { createIntegrationDatabase } from "../../support/database";
 import { createUserSeeder } from "../../support/seeders/users";
 import { readPersistedDocument } from "../../support/read-documents";
-import { startEmbeddingServer, type TestEmbeddingServer } from "../../support/embedding-server";
+import { startOpenRouterEmbeddingsStub, type TestOpenRouterEmbeddings } from "../../support/openrouter-embeddings";
 import { createRetrievalService } from "@/server/modules/retrieval/retrieval-service";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, EMBEDDING_REVISION } from "@/server/modules/retrieval/retrieval-contract";
 
 import type { IngestionJobInput } from "@/server/modules/ingestion/ingestion-input";
 import {
@@ -41,11 +42,12 @@ describe("publishIngestionJob", () => {
     let connection: ChannelModel;
     let channel: Channel;
     let rabbitmqUrl: string;
-    let embeddings: TestEmbeddingServer;
+    let embeddings: TestOpenRouterEmbeddings;
 
     beforeAll(async () => {
-        embeddings = await startEmbeddingServer();
-        vi.stubEnv("EMBEDDING_SERVICE_URL", embeddings.url);
+        embeddings = await startOpenRouterEmbeddingsStub();
+        vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+        vi.stubEnv("OPENROUTER_EMBEDDINGS_URL", embeddings.url);
         vi.stubEnv("INGESTION_QUEUE_NAME", INGESTION_QUEUE_NAME);
         vi.stubEnv("INGESTION_REJECTED_QUEUE_NAME", REJECTED_INGESTION_QUEUE_NAME);
         broker = await new GenericContainer("rabbitmq:4-management")
@@ -100,8 +102,7 @@ describe("publishIngestionJob", () => {
         const worker = spawn(resolve("worker/.venv/bin/python"), ["-m", "ragnarok_ingestion"], {
             cwd: resolve("worker"),
             env: { ...process.env, DATABASE_URL: inject("databaseUrl"), RABBITMQ_URL: rabbitmqUrl,
-                EMBEDDING_SERVICE_URL: embeddings.url,
-                EMBEDDING_MODEL_DIR: resolve("worker/models/bge-small-en-v1.5"), HF_HUB_OFFLINE: "1",
+                OPENROUTER_API_KEY: "test-openrouter-key", OPENROUTER_EMBEDDINGS_URL: embeddings.url,
                 S3_ENDPOINT: storageEndpoint, S3_REGION: "us-east-1", S3_BUCKET: "ingestion-test",
                 S3_ACCESS_KEY_ID: "testuser", S3_SECRET_ACCESS_KEY: "testpassword",
                 S3_FORCE_PATH_STYLE: "true", PDF_MAX_UPLOAD_SIZE_BYTES: sourceType === "oversized" ? "1" : "10485760" },
@@ -159,9 +160,9 @@ describe("publishIngestionJob", () => {
                 { ordinal: 1, text: "One two three four", pageNumber: 3, revision: 1 },
             ]);
             for (const chunk of chunks) {
-                expect(chunk.embeddingModel).toBe("BAAI/bge-small-en-v1.5");
-                expect(chunk.embeddingRevision).toBe("Qdrant/bge-small-en-v1.5-onnx-Q@52398278842ec682c6f32300af41344b1c0b0bb2");
-                expect(chunk.embedding).toHaveLength(384);
+                expect(chunk.embeddingModel).toBe(EMBEDDING_MODEL);
+                expect(chunk.embeddingRevision).toBe(EMBEDDING_REVISION);
+                expect(chunk.embedding).toHaveLength(EMBEDDING_DIMENSIONS);
                 expect(chunk.embedding?.every(Number.isFinite)).toBe(true);
                 expect(chunk.embedding?.reduce((sum, value) => sum + value * value, 0)).toBeCloseTo(1, 5);
             }

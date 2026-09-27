@@ -23,7 +23,7 @@ const { database, databasePool } = createIntegrationDatabase();
 const users = createUserSeeder(database);
 const chunks = createChunkSeeder(database);
 async function embedQueryFixture(): Promise<QueryEmbedding> {
-    return { vector: [1, ...Array<number>(383).fill(0)], model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION };
+    return { vector: [1, ...Array<number>(1535).fill(0)], model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION };
 }
 const retrieval = createRetrievalService(database, embedQueryFixture);
 const generator: TextGenerator = {

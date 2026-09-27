@@ -1,8 +1,9 @@
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { writeFile } from "node:fs/promises";
 import { z } from "zod";
 import { createRetrievalService } from "@/server/modules/retrieval/retrieval-service";
-import { EMBEDDING_MODEL, EMBEDDING_REVISION } from "@/server/modules/retrieval/retrieval-contract";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, EMBEDDING_REVISION } from "@/server/modules/retrieval/retrieval-contract";
+import { EMBEDDING_RESPONSE_MODEL } from "@/server/embedding/embedding-config";
 import { evaluationDocuments, evaluationQuestions } from "../../../../evaluation/retrieval-corpus";
 import { createTextDocumentFixture } from "../../../../fixtures/documents";
 import { createChunkFixture } from "../../../../fixtures/retrieval";
@@ -10,7 +11,6 @@ import { createIntegrationDatabase } from "../../../support/database";
 import { createUserSeeder } from "../../../support/seeders/users";
 import { seedDocument } from "../../../support/seeders/documents";
 import { createChunkSeeder } from "../../../support/seeders/chunks";
-import { startEmbeddingServer } from "../../../support/embedding-server";
 
 const { database, databasePool } = createIntegrationDatabase();
 const users = createUserSeeder(database);
@@ -18,9 +18,9 @@ const chunks = createChunkSeeder(database);
 afterAll(async () => { await databasePool.end(); });
 
 describe("retrieval ranking benchmark v1", () => {
-    it("reports source retrieval on a fixed synthetic corpus using the actual BGE model", async () => {
-        const server = await startEmbeddingServer();
-        vi.stubEnv("EMBEDDING_SERVICE_URL", server.url);
+    it.skipIf(process.env.RUN_LIVE_EMBEDDING_EVALUATION !== "1")("reports source retrieval on a fixed synthetic corpus using OpenRouter", async () => {
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey) throw new Error("Set OPENROUTER_API_KEY for the live retrieval evaluation");
         try {
             const owner = await users.seed();
             const configId = await chunks.seedConfig();
@@ -29,13 +29,16 @@ describe("retrieval ranking benchmark v1", () => {
                 const fixture = createTextDocumentFixture({ userId: owner.id, status: "completed", title: source.title, sourceText: source.passages.join("\n\n") });
                 await seedDocument(database, fixture);
                 sourceKeys.set(fixture.id, source.key);
-                const response = await fetch(`${server.url}/embed`, { method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ kind: "document", texts: source.passages }), signal: AbortSignal.timeout(20_000) });
+                const response = await fetch("https://openrouter.ai/api/v1/embeddings", { method: "POST", headers: {
+                    Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json",
+                }, body: JSON.stringify({ model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS,
+                    input: source.passages, encoding_format: "float" }), signal: AbortSignal.timeout(30_000) });
                 expect(response.ok).toBe(true);
-                const body = z.object({ model: z.literal(EMBEDDING_MODEL), revision: z.literal(EMBEDDING_REVISION),
-                    vectors: z.array(z.array(z.number()).length(384)).length(source.passages.length) }).parse(await response.json());
+                const body = z.object({ model: z.union([z.literal(EMBEDDING_MODEL), z.literal(EMBEDDING_RESPONSE_MODEL)]), data: z.array(z.object({
+                    index: z.number().int(), embedding: z.array(z.number()).length(EMBEDDING_DIMENSIONS),
+                })).length(source.passages.length) }).parse(await response.json());
                 for (const [ordinal, text] of source.passages.entries()) {
-                    const embedding = body.vectors[ordinal];
+                    const embedding = body.data.find((item) => item.index === ordinal)?.embedding;
                     if (!embedding) throw new Error("Missing benchmark vector");
                     await chunks.seed(createChunkFixture(fixture.id, configId, { ordinal, text, embedding }));
                 }
@@ -52,7 +55,7 @@ describe("retrieval ranking benchmark v1", () => {
                     retrievedSources: rankedSources });
             }
             const answerable = results.filter((row) => row.sourceRecallAt5 !== null);
-            const report = { benchmark: "synthetic-ranking-v1", model: EMBEDDING_REVISION,
+            const report = { benchmark: "synthetic-ranking-v1", model: EMBEDDING_MODEL, configuration: EMBEDDING_REVISION,
                 sourceRecallAt5: answerable.reduce((sum, row) => sum + (row.sourceRecallAt5 ?? 0), 0) / answerable.length,
                 meanReciprocalRank: answerable.reduce((sum, row) => sum + row.reciprocalRank, 0) / answerable.length, results };
             console.info(JSON.stringify(report, null, 2));
@@ -60,10 +63,8 @@ describe("retrieval ranking benchmark v1", () => {
             expect(results).toHaveLength(evaluationQuestions.length);
             expect(answerable.some((row) => (row.sourceRecallAt5 ?? 0) > 0)).toBe(true);
         } finally {
-            vi.unstubAllEnvs();
             await users.cleanup();
             await chunks.cleanup();
-            await server.stop();
         }
-    }, 60_000);
+    }, 120_000);
 });
