@@ -39,11 +39,32 @@ describe("RetrievalResults", () => {
         expect(html).toContain("Retrieved only");
     });
 
+    it("finds citations written with corner brackets", () => {
+        const html = renderToStaticMarkup(<RetrievalResults
+            run={run} generation={generation} answer="Cancel anytime 【S1】" messageId="answer-id"
+            pending={false} onRetry={() => {}}
+        />);
+        expect(html).toContain("Cited sources");
+        expect(html).toContain('id="source-answer-id-1"');
+        expect(html).not.toContain("No citations found");
+    });
+
     it("keeps the historical citation visible when its document is gone", () => {
         const html = renderToStaticMarkup(<RetrievalResults
             run={{ ...run, chunks: [] }} generation={generation} answer="Cancel anytime [S1]" messageId="answer-id"
             pending={false} onRetry={() => {}}
         />);
         expect(html).toContain("<span>[1]</span><span>Source unavailable</span>");
+    });
+
+    it("reports when the answer has no matching citations", () => {
+        for (const answer of ["Cancel anytime", "Cancel anytime [S2]"]) {
+            const html = renderToStaticMarkup(<RetrievalResults
+                run={run} generation={generation} answer={answer} messageId="answer-id"
+                pending={false} onRetry={() => {}}
+            />);
+            expect(html).toContain("No citations found in this answer.");
+            expect(html).not.toContain("Cited sources");
+        }
     });
 });

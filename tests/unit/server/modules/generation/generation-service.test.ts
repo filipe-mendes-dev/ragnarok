@@ -35,7 +35,7 @@ describe("generationService.generate", () => {
         }));
     });
 
-    it("rejects missing and unknown citations while retaining safe generation metadata", async () => {
+    it("keeps answers without matching citations without another provider request", async () => {
         const chunk: RetrievedChunk = {
             chunkId: "chunk-id", documentId: "document-id", documentTitle: "Policy", revision: 1,
             ordinal: 0, pageNumber: null, text: "Cancellations are allowed.", rank: 1, semanticSimilarity: 0.9,
@@ -46,10 +46,12 @@ describe("generationService.generate", () => {
             inputTokens: 20, outputTokens: 5, reasoningTokens: null, totalTokens: 25, latencyMs: 10,
         };
         for (const text of ["Cancellations are allowed.", "Cancellations are allowed. [S2]"]) {
-            const service = createGenerationService({ async generateText() { return { ...metadata, text }; } });
-            await expect(service.generate("Can I cancel?", [chunk])).rejects.toMatchObject({
-                code: "invalid_citation", metadata: { providerResponseId: "response-id" },
+            const generateText = vi.fn<TextGenerator["generateText"]>().mockResolvedValue({ ...metadata, text });
+            const service = createGenerationService({ generateText });
+            await expect(service.generate("Can I cancel?", [chunk])).resolves.toMatchObject({
+                answer: text, selectedChunkIds: ["chunk-id"], providerResponseId: "response-id",
             });
+            expect(generateText).toHaveBeenCalledTimes(1);
         }
     });
 
