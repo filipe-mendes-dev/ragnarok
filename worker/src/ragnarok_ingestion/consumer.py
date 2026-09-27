@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from ragnarok_ingestion.diagnostics import safe_error_details
 from ragnarok_ingestion.embedding import DocumentEmbedder
-from ragnarok_ingestion.embedding_http import EmbeddingUnavailableError
+from ragnarok_ingestion.openrouter_embedding import EmbeddingUnavailableError
 from ragnarok_ingestion.ingestion_input import parse_ingestion_job_input
 from ragnarok_ingestion.ingestion_service import DocumentBusyError, ingest_document
 

@@ -8,7 +8,7 @@ from typing import Literal
 
 from ragnarok_ingestion.chunk_config_repository import insert_chunk_config_if_missing
 from ragnarok_ingestion.chunk_repository import replace_document_chunks
-from ragnarok_ingestion.chunking import TextChunk
+from ragnarok_ingestion.chunking import CHUNKING_METHOD, TextChunk
 from ragnarok_ingestion.database import connect_database
 from ragnarok_ingestion.document_repository import (
     try_lock_document,
@@ -16,7 +16,7 @@ from ragnarok_ingestion.document_repository import (
 )
 from ragnarok_ingestion.ingestion_input import IngestionJobInput
 from ragnarok_ingestion.embedding import (
-    BATCH_SIZE, MODEL_NAME, MODEL_REVISION, TOKEN_CHUNKING_METHOD, TOKEN_CHUNKING_SETTINGS,
+    BATCH_SIZE, CHUNKING_SETTINGS, MODEL_NAME, MODEL_REVISION,
     EmbeddingInputError, DocumentEmbedder, chunk_for_embedding, embed_documents,
 )
 from ragnarok_ingestion.pdf_processing import process_pdf
@@ -65,7 +65,7 @@ def ingest_document(
                     stage = "chunking"
                     logger.info("event=ingestion_stage stage=chunking document=%s revision=%s characters=%s",
                                 job.document_id, job.revision, len(text))
-                    chunks = chunk_for_embedding(text, embedder.tokenizer)
+                    chunks = chunk_for_embedding(text)
             elif source.source_type == "pdf":
                 if source.storage_key is None:
                     raise RuntimeError("PDF source has no storage key")
@@ -79,7 +79,7 @@ def ingest_document(
                 logger.info("event=ingestion_stage stage=chunking document=%s revision=%s",
                             job.document_id, job.revision)
                 for page in pages:
-                    for chunk in chunk_for_embedding(page.text, embedder.tokenizer):
+                    for chunk in chunk_for_embedding(page.text):
                         chunks.append(TextChunk(len(chunks), chunk.text, page.page_number))
             else:
                 raise RuntimeError("Unsupported document source type")
@@ -122,8 +122,8 @@ def ingest_document(
             if completed is None:
                 return "ignored"
             config_id = insert_chunk_config_if_missing(
-                connection, TOKEN_CHUNKING_METHOD,
-                TOKEN_CHUNKING_SETTINGS.chunk_size, TOKEN_CHUNKING_SETTINGS.chunk_overlap,
+                connection, CHUNKING_METHOD,
+                CHUNKING_SETTINGS.chunk_size, CHUNKING_SETTINGS.chunk_overlap,
             )
             replace_document_chunks(
                 connection, job.document_id, job.user_id, job.revision, config_id,

@@ -1,121 +1,60 @@
-"""CPU embeddings with explicit, non-truncating input limits."""
+"""Chunk settings and embedding validation, independent of the provider."""
 
-from collections.abc import Iterable
-from dataclasses import dataclass
 from math import isfinite
-from pathlib import Path
-from typing import Protocol, SupportsFloat
-
-from fastembed import TextEmbedding
-from tokenizers import Tokenizer
+from typing import Protocol
 
 from ragnarok_ingestion.chunking import ChunkingSettings, TextChunk, chunk_text
 
-MODEL_NAME = "BAAI/bge-small-en-v1.5"
-MODEL_REVISION = "Qdrant/bge-small-en-v1.5-onnx-Q@52398278842ec682c6f32300af41344b1c0b0bb2"
-DEFAULT_MODEL_DIRECTORY = Path(__file__).resolve().parents[2] / "models" / "bge-small-en-v1.5"
-EMBEDDING_DIMENSIONS = 384
-MAX_INPUT_TOKENS = 512
-BATCH_SIZE = 8
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
-TOKEN_CHUNKING_SETTINGS = ChunkingSettings(chunk_size=384, chunk_overlap=48)
-TOKEN_CHUNKING_METHOD = "recursive-bge-small-en-v1.5-token-v1"
+MODEL_NAME = "openai/text-embedding-3-small"
+RESPONSE_MODEL_NAME = "text-embedding-3-small"
+# This identifies our configuration, not a pinned upstream model snapshot.
+MODEL_REVISION = "openrouter-1536-v1"
+EMBEDDING_DIMENSIONS = 1536
+BATCH_SIZE = 16
+
+# Tune these two values for ingestion. Both are Unicode character counts.
+CHUNKING_SETTINGS = ChunkingSettings(chunk_size=1_000, chunk_overlap=150)
 
 
 class EmbeddingInputError(ValueError):
-    """A rejected input with a fixed, safe message for document status."""
-
-
-class EmbeddingModel(Protocol):
-    def embed(
-        self, documents: list[str], *, batch_size: int, parallel: None,
-    ) -> Iterable[Iterable[SupportsFloat]]: ...
-
-
-@dataclass(frozen=True)
-class LocalEmbedder:
-    tokenizer: Tokenizer
-    model: EmbeddingModel
+    """Rejected document input with a safe message for document status."""
 
 
 class DocumentEmbedder(Protocol):
-    tokenizer: Tokenizer
-    model: EmbeddingModel
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
-def load_tokenizer(model_directory: Path) -> Tokenizer:
-    tokenizer = Tokenizer.from_file(str(model_directory / "tokenizer.json"))
-    tokenizer.no_truncation()
-    tokenizer.no_padding()
-    return tokenizer
-
-
-def load_local_embedder(model_directory: Path) -> LocalEmbedder:
-    """Load one resident CPU model from a provisioned directory, without downloads."""
-    for filename in (
-        "model_optimized.onnx", "tokenizer.json", "config.json",
-        "tokenizer_config.json", "special_tokens_map.json",
-    ):
-        if not (model_directory / filename).is_file():
-            raise FileNotFoundError(f"Missing model file: {filename}. Follow worker/README.md setup.")
-    tokenizer = load_tokenizer(model_directory)
-    model = TextEmbedding(
-        model_name=MODEL_NAME,
-        specific_model_path=str(model_directory),
-        local_files_only=True,
-        threads=2,
-        providers=["CPUExecutionProvider"],
-    )
-    return LocalEmbedder(tokenizer=tokenizer, model=model)
-
-
-def count_input_tokens(tokenizer: Tokenizer, text: str) -> int:
-    """Include special tokens, with truncation and padding disabled at load time."""
-    return len(tokenizer.encode(text, add_special_tokens=True).ids)
-
-
-def chunk_for_embedding(text: str, tokenizer: Tokenizer) -> list[TextChunk]:
-    def count_content_tokens(value: str) -> int:
-        return len(tokenizer.encode(value, add_special_tokens=False).ids)
-
-    chunks = chunk_text(
-        text, TOKEN_CHUNKING_SETTINGS, length_function=count_content_tokens,
-    )
+def chunk_for_embedding(text: str) -> list[TextChunk]:
+    chunks = chunk_text(text, CHUNKING_SETTINGS)
     for chunk in chunks:
-        # Token counts can change when fragments are joined; check final strings.
-        if count_content_tokens(chunk.text) > TOKEN_CHUNKING_SETTINGS.chunk_size:
-            raise EmbeddingInputError("Chunk exceeds the 384-content-token budget")
-        validate_embedding_input(tokenizer, chunk.text)
+        validate_embedding_input(chunk.text)
     return chunks
 
 
-def validate_embedding_input(tokenizer: Tokenizer, text: str) -> None:
-    if not isinstance(text, str) or not text.strip():
+def validate_embedding_input(text: str) -> None:
+    if not text.strip():
         raise EmbeddingInputError("Embedding input must be nonblank text")
-    if count_input_tokens(tokenizer, text) > MAX_INPUT_TOKENS:
-        raise EmbeddingInputError("Embedding input exceeds 512 tokens; split it before embedding")
+    if len(text) > CHUNKING_SETTINGS.chunk_size:
+        raise EmbeddingInputError("Embedding chunk exceeds the configured character limit")
+
+
+def validate_embedding_vectors(vectors: list[list[float]], count: int) -> None:
+    if len(vectors) != count:
+        raise RuntimeError("Embedding provider returned the wrong number of vectors")
+    for vector in vectors:
+        if len(vector) != EMBEDDING_DIMENSIONS or not all(isfinite(value) for value in vector):
+            raise RuntimeError("Embedding provider returned an invalid vector")
+        if not any(value != 0 for value in vector):
+            raise RuntimeError("Embedding provider returned a zero vector")
 
 
 def embed_documents(embedder: DocumentEmbedder, texts: list[str]) -> list[list[float]]:
-    """Validate the complete request before running small sequential batches."""
     for text in texts:
-        validate_embedding_input(embedder.tokenizer, text)
+        validate_embedding_input(text)
     if not texts:
         return []
-
-    vectors: list[list[float]] = []
-    for vector in embedder.model.embed(texts, batch_size=BATCH_SIZE, parallel=None):
-        values = [float(value) for value in vector]
-        if len(values) != EMBEDDING_DIMENSIONS or not all(isfinite(value) for value in values):
-            raise RuntimeError("Embedding model returned an invalid vector")
-        if not any(value != 0 for value in values):
-            raise RuntimeError("Embedding model returned a zero vector")
-        vectors.append(values)
-    if len(vectors) != len(texts):
-        raise RuntimeError("Embedding model returned the wrong number of vectors")
+    if len(texts) > BATCH_SIZE:
+        raise EmbeddingInputError("Embedding batch exceeds the configured limit")
+    vectors = embedder.embed(texts)
+    validate_embedding_vectors(vectors, len(texts))
     return vectors
-
-
-def embed_query(embedder: LocalEmbedder, text: str) -> list[float]:
-    validate_embedding_input(embedder.tokenizer, text)
-    return embed_documents(embedder, [QUERY_PREFIX + text])[0]
