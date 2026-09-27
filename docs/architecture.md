@@ -151,7 +151,7 @@ It does not import database clients, Node-only APIs, secrets, RabbitMQ, or provi
 
 ### `worker/src/ragnarok_ingestion`
 
-Contains Python ingestion behavior. The entry point configures logging, loads the matching tokenizer and HTTP embedding adapter, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text using the model tokenizer and requests embeddings from the shared service before persistence.
+Contains Python ingestion behavior. The entry point configures logging, loads the OpenRouter embedding adapter, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text by character count and requests embeddings from OpenRouter before persistence.
 
 ## Client and server dependency graphs
 
@@ -515,7 +515,7 @@ returning validated JSON pages. Original PDF bytes stay in the child.
 The parent retains all database access, revision checks, and acknowledgement work.
 
 One 30-second deadline covers child startup, downloading, extraction,
-and result transfer. Token-aware chunking and embedding now run in the parent and
+and result transfer. Character-based chunking and embedding now run in the parent and
 are not covered by this PDF deadline; source-size limits and small inference batches
 bound the input. No whole-ingestion execution deadline is implemented yet.
 `subprocess.run` kills and waits for an overdue child; the service records a safe
@@ -543,7 +543,7 @@ Detailed deferred work and completion conditions are tracked in [todo.md](todo.m
 
 ## Delivery sequencing
 
-The text/PDF ingestion flow and semantic retrieval use the same configured OpenRouter embedding model. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Validated source labels link to saved evidence snapshots, and a POST route streams progress and answer text over SSE. Publication recovery, durable retry limits, document retry UI, shutdown
+The text/PDF ingestion flow and semantic retrieval use the same configured OpenRouter embedding model. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Matching source labels link to saved evidence snapshots, while answers without matching citations display a notice. A POST route streams progress and answer text over SSE. Publication recovery, durable retry limits, document retry UI, shutdown
 supervision, and broader failure testing are deferred until that product path works,
 and remain required reliability follow-ups before public deployment. Preserve the
 existing ownership, revision, atomic-write, and execution-limit protections. Continue

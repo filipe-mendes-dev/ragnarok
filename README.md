@@ -7,8 +7,8 @@ chunks in PostgreSQL. Original PDFs remain in S3-compatible storage.
 
 Text/PDF ingestion, semantic retrieval, and plain answer generation work locally.
 The web app and Python worker request embeddings from OpenRouter. Chat saves retrieval
-and generation details. Linked citations,
-production deployment, and reliability hardening remain subsequent milestones.
+and generation details and links available citations. Production deployment and
+reliability hardening remain subsequent milestones.
 
 ## Documentation
 

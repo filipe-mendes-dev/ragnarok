@@ -27,15 +27,17 @@ snapshots. It includes whole excerpts in rank order up to a 12,000-character con
 budget. If none fit, the service abstains without calling OpenRouter. Otherwise the
 server sends the question and excerpts to the configured `GENERATION_MODEL` through
 OpenRouter. Selected excerpts receive contiguous `[S1]`, `[S2]`, and later labels.
-The prompt asks for cited Markdown or an exact abstention. The service rejects
-missing or out-of-range labels, but it does not validate factual support. The UI
-shows cited source snapshots before the full retrieval trace. Deleted source
+The prompt asks for cited Markdown or an exact abstention. The UI links ASCII
+`[S1]` and corner-bracket `【S1】` labels that match selected sources, renders
+Markdown tables, and reports when an answer has no matching citations.
+An uncited answer remains visible; citation links do not validate factual support.
+The UI shows cited source snapshots before the full retrieval trace. Deleted source
 snapshots produce unavailable labels in historical answers.
 
 OpenRouter and the browser-facing POST route use SSE. The provider adapter gathers
 the full response, finish reason, and final usage while forwarding text increments.
 The browser displays provisional plain text, then reloads the saved answer and
-renders its Markdown and validated citation links. Stream errors and cancellation
+renders its Markdown and available citation links. Stream errors and cancellation
 end in safe persisted failure states; a disconnected browser reloads durable state
 and can retry the same message ID.
 
