@@ -15,7 +15,7 @@ export const documentChunk = pgTable(
         ordinal: integer("ordinal").notNull(),
         text: text("text").notNull(),
         pageNumber: integer("page_number"),
-        embedding: vector("embedding", { dimensions: 384 }),
+        embedding: vector("embedding", { dimensions: 1536 }),
         embeddingModel: text("embedding_model"),
         embeddingRevision: text("embedding_revision"),
         chunkConfigId: uuid("chunk_config_id")

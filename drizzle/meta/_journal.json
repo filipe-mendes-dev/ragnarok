@@ -71,6 +71,20 @@
       "when": 1790180804518,
       "tag": "0009_curvy_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790531181624,
+      "tag": "0010_drop-legacy-embeddings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790531198231,
+      "tag": "0011_add-openrouter-embeddings",
+      "breakpoints": true
     }
   ]
 }
