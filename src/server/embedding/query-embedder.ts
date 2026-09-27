@@ -1,31 +1,37 @@
 import { z } from "zod";
+import { getEmbeddingEnvironment } from "@/server/config/env";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, EMBEDDING_RESPONSE_MODEL, EMBEDDING_REVISION, EMBEDDING_TIMEOUT_MS } from "@/server/embedding/embedding-config";
 import {
-    EMBEDDING_DIMENSIONS, EMBEDDING_MODEL, EMBEDDING_REVISION, RetrievalError,
-    type QueryEmbedding,
+    RetrievalError, type QueryEmbedding,
 } from "@/server/modules/retrieval/retrieval-contract";
 
 const responseSchema = z.object({
-    model: z.literal(EMBEDDING_MODEL),
-    revision: z.literal(EMBEDDING_REVISION),
-    vectors: z.array(z.array(z.number().finite()).length(EMBEDDING_DIMENSIONS)
-        .refine((vector) => vector.some((value) => value !== 0))).length(1),
-}).strict();
+    model: z.union([z.literal(EMBEDDING_MODEL), z.literal(EMBEDDING_RESPONSE_MODEL)]),
+    data: z.array(z.object({
+        index: z.literal(0),
+        embedding: z.array(z.number().finite()).length(EMBEDDING_DIMENSIONS)
+            .refine((vector) => vector.some((value) => value !== 0)),
+    })).length(1),
+});
 
 export async function embedQuery(query: string): Promise<QueryEmbedding> {
     try {
-        const endpoint = process.env.EMBEDDING_SERVICE_URL;
-        if (!endpoint) throw new RetrievalError("unavailable");
-        const response = await fetch(`${endpoint.replace(/\/$/, "")}/embed`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ kind: "query", texts: [query] }),
-            signal: AbortSignal.timeout(20_000), cache: "no-store", redirect: "error",
+        const environment = getEmbeddingEnvironment();
+        if (!environment) throw new RetrievalError("unavailable");
+        const response = await fetch(environment.OPENROUTER_EMBEDDINGS_URL, {
+            method: "POST", headers: {
+                Authorization: `Bearer ${environment.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ model: EMBEDDING_MODEL, dimensions: EMBEDDING_DIMENSIONS, input: query, encoding_format: "float" }),
+            signal: AbortSignal.timeout(EMBEDDING_TIMEOUT_MS), cache: "no-store", redirect: "error",
         });
-        if (response.status === 422) throw new RetrievalError("invalid_query");
+        if ([400, 413, 422].includes(response.status)) throw new RetrievalError("invalid_query");
         if (!response.ok) throw new RetrievalError("unavailable");
         const parsed = responseSchema.parse(await response.json());
-        const vector = parsed.vectors[0];
+        const vector = parsed.data[0]?.embedding;
         if (!vector) throw new RetrievalError("unavailable");
-        return { vector, model: parsed.model, revision: parsed.revision };
+        return { vector, model: EMBEDDING_MODEL, revision: EMBEDDING_REVISION };
     } catch (error: unknown) {
         if (error instanceof RetrievalError) throw error;
         throw new RetrievalError("unavailable");

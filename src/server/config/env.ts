@@ -18,6 +18,11 @@ export interface GenerationEnvironment {
     GENERATION_MODEL: string;
 }
 
+export interface EmbeddingEnvironment {
+    OPENROUTER_API_KEY: string;
+    OPENROUTER_EMBEDDINGS_URL: string;
+}
+
 export interface GenerationSettings {
     maxOutputTokens: number;
     timeoutMs: number;
@@ -44,6 +49,11 @@ const serverEnvironmentSchema = z.object({
 const generationEnvironmentSchema = z.object({
     OPENROUTER_API_KEY: z.string().trim().min(1),
     GENERATION_MODEL: z.string().trim().min(1),
+});
+
+const embeddingEnvironmentSchema = z.object({
+    OPENROUTER_API_KEY: z.string().trim().min(1),
+    OPENROUTER_EMBEDDINGS_URL: z.url().default("https://openrouter.ai/api/v1/embeddings"),
 });
 
 const generationSettingsSchema = z.object({
@@ -86,6 +96,11 @@ export function getServerEnvironment(): ServerEnvironment {
 
 export function getGenerationEnvironment(environment: NodeJS.ProcessEnv = process.env): GenerationEnvironment | null {
     const result = generationEnvironmentSchema.safeParse(environment);
+    return result.success ? result.data : null;
+}
+
+export function getEmbeddingEnvironment(environment: NodeJS.ProcessEnv = process.env): EmbeddingEnvironment | null {
+    const result = embeddingEnvironmentSchema.safeParse(environment);
     return result.success ? result.data : null;
 }
 
