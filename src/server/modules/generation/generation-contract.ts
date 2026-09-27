@@ -36,7 +36,7 @@ export interface TextGenerator {
     generateText(request: TextGenerationRequest): Promise<TextGenerationResponse>;
 }
 
-export type GenerationErrorCode = "not_configured" | "unavailable" | "timeout" | "invalid_response" | "output_limit" | "empty_response" | "invalid_citation" | "cancelled";
+export type GenerationErrorCode = "not_configured" | "unavailable" | "timeout" | "invalid_response" | "output_limit" | "empty_response" | "cancelled";
 
 const generationErrorMessages: Record<GenerationErrorCode, string> = {
     not_configured: "Generation is not configured yet.",
@@ -45,7 +45,6 @@ const generationErrorMessages: Record<GenerationErrorCode, string> = {
     invalid_response: "Generation returned an unusable answer. Please retry.",
     output_limit: "The answer exceeded its output limit. Try a shorter question.",
     empty_response: "The model returned no answer. Please retry.",
-    invalid_citation: "The answer could not be linked to its sources. Please retry.",
     cancelled: "Generation was stopped. You can retry this question.",
 };
 
