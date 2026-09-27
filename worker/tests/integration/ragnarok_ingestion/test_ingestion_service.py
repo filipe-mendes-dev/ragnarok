@@ -6,15 +6,13 @@ from uuid import uuid4
 
 import pytest
 from psycopg.errors import UniqueViolation
-from tokenizers import Tokenizer
-
 from ragnarok_ingestion import ingestion_service
 from ragnarok_ingestion.pdf_extraction import ExtractedPage, extract_pdf_pages
 from ragnarok_ingestion.s3_source import PdfDownloadError
-from ragnarok_ingestion.chunking import TextChunk
+from ragnarok_ingestion.chunking import CHUNKING_METHOD, TextChunk
 from ragnarok_ingestion.embedding import (
-    MODEL_NAME, MODEL_REVISION, TOKEN_CHUNKING_METHOD,
-    EmbeddingInputError, LocalEmbedder, chunk_for_embedding, count_input_tokens,
+    CHUNKING_SETTINGS, MODEL_NAME, MODEL_REVISION,
+    EmbeddingInputError, DocumentEmbedder, chunk_for_embedding,
 )
 from ragnarok_ingestion.database import connect_database
 from ragnarok_ingestion.document_repository import try_lock_document
@@ -51,13 +49,13 @@ def queued_job(migrated_database_url: str) -> Iterator[IngestionJobInput]:
 
 
 def test_commits_chunks_and_completion_and_ignores_redelivery(
-    migrated_database_url: str, queued_job: IngestionJobInput, embedder: LocalEmbedder,
+    migrated_database_url: str, queued_job: IngestionJobInput, embedder: DocumentEmbedder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected_vector = [1.0] + [0.0] * 383
+    expected_vector = [1.0] + [0.0] * 1535
     embedded_texts: list[str] = []
 
-    def embed_known_vector(model: LocalEmbedder, texts: list[str]) -> list[list[float]]:
+    def embed_known_vector(model: DocumentEmbedder, texts: list[str]) -> list[list[float]]:
         embedded_texts.extend(texts)
         return [expected_vector for text in texts]
 
@@ -80,7 +78,7 @@ def test_commits_chunks_and_completion_and_ignores_redelivery(
             (queued_job.document_id,),
         ).fetchall()
         assert len(chunks) == 1
-        assert chunks[0][1:8] == (2, 0, "Private source text", None, TOKEN_CHUNKING_METHOD, 384, 48)
+        assert chunks[0][1:8] == (2, 0, "Private source text", None, CHUNKING_METHOD, 1000, 150)
         assert json.loads(str(chunks[0][8])) == expected_vector
         assert chunks[0][9:] == (MODEL_NAME, MODEL_REVISION)
         assert ingest_document(migrated_database_url, queued_job, embedder) == "ignored"
@@ -93,7 +91,7 @@ def test_commits_chunks_and_completion_and_ignores_redelivery(
 @pytest.mark.parametrize("change", [{"userId": "another-owner"}, {"revision": 1}])
 def test_wrong_owner_or_revision_cannot_change_document(
     migrated_database_url: str, queued_job: IngestionJobInput, change: dict[str, object],
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
 ) -> None:
     payload = json.loads(queued_job.model_dump_json(by_alias=True))
     payload.update(change)
@@ -109,7 +107,7 @@ def test_wrong_owner_or_revision_cannot_change_document(
 
 
 def test_connection_lock_prevents_concurrent_processing_and_is_released_on_close(
-    migrated_database_url: str, queued_job: IngestionJobInput, embedder: LocalEmbedder,
+    migrated_database_url: str, queued_job: IngestionJobInput, embedder: DocumentEmbedder,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         assert try_lock_document(connection, queued_job.document_id)
@@ -120,15 +118,15 @@ def test_connection_lock_prevents_concurrent_processing_and_is_released_on_close
 
 def test_edit_during_chunking_prevents_stale_completion(
     migrated_database_url: str, queued_job: IngestionJobInput, monkeypatch: pytest.MonkeyPatch,
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
 ) -> None:
-    def chunk_with_concurrent_edit(text: str, tokenizer: Tokenizer) -> list[TextChunk]:
+    def chunk_with_concurrent_edit(text: str) -> list[TextChunk]:
         with connect_database(migrated_database_url) as connection:
             connection.execute(
                 "UPDATE document SET revision = 3, source_text = 'New source', status = 'queued' WHERE id = %s",
                 (queued_job.document_id,),
             )
-        return chunk_for_embedding(text, tokenizer)
+        return chunk_for_embedding(text)
 
     monkeypatch.setattr(ingestion_service, "chunk_for_embedding", chunk_with_concurrent_edit)
     assert ingest_document(migrated_database_url, queued_job, embedder) == "ignored"
@@ -144,7 +142,7 @@ def test_edit_during_chunking_prevents_stale_completion(
 @pytest.mark.parametrize("failure_stage", ["embedding", "persistence"])
 def test_failure_preserves_old_chunks_and_embeddings_without_completing(
     migrated_database_url: str, queued_job: IngestionJobInput, monkeypatch: pytest.MonkeyPatch,
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
     failure_stage: str,
 ) -> None:
     config_id = uuid4()
@@ -162,15 +160,15 @@ def test_failure_preserves_old_chunks_and_embeddings_without_completing(
                 VALUES (%s, %s, 1, 0, 'Previous content', %s, %s::vector, %s, %s)
                 """,
                 (old_chunk_id, queued_job.document_id, config_id,
-                 json.dumps([1.0] + [0.0] * 383), MODEL_NAME, MODEL_REVISION),
+                 json.dumps([1.0] + [0.0] * 1535), MODEL_NAME, MODEL_REVISION),
             )
             # Duplicate ordinals cause a real database constraint failure after DELETE.
-            def invalid_chunks(text: str, tokenizer: Tokenizer) -> list[TextChunk]:
+            def invalid_chunks(text: str) -> list[TextChunk]:
                 return [TextChunk(0, "First"), TextChunk(0, "Second")]
 
             monkeypatch.setattr(ingestion_service, "chunk_for_embedding", invalid_chunks)
             if failure_stage == "embedding":
-                def fail_embedding(model: LocalEmbedder, texts: list[str]) -> list[list[float]]:
+                def fail_embedding(model: DocumentEmbedder, texts: list[str]) -> list[list[float]]:
                     raise RuntimeError("Simulated inference failure")
 
                 monkeypatch.setattr(ingestion_service, "embed_documents", fail_embedding)
@@ -190,7 +188,7 @@ def test_failure_preserves_old_chunks_and_embeddings_without_completing(
                 (old_chunk_id,),
             ).fetchone()
             assert saved is not None
-            assert json.loads(str(saved[0])) == [1.0] + [0.0] * 383
+            assert json.loads(str(saved[0])) == [1.0] + [0.0] * 1535
             assert saved[1:] == (MODEL_NAME, MODEL_REVISION)
         finally:
             connection.execute("DELETE FROM document_chunk WHERE document_id = %s", (queued_job.document_id,))
@@ -198,7 +196,7 @@ def test_failure_preserves_old_chunks_and_embeddings_without_completing(
 
 
 def test_processing_left_by_an_interrupted_worker_can_complete(
-    migrated_database_url: str, queued_job: IngestionJobInput, embedder: LocalEmbedder,
+    migrated_database_url: str, queued_job: IngestionJobInput, embedder: DocumentEmbedder,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         connection.execute("UPDATE document SET status = 'processing' WHERE id = %s", (queued_job.document_id,))
@@ -207,15 +205,15 @@ def test_processing_left_by_an_interrupted_worker_can_complete(
 
 def test_edit_during_embedding_discards_stale_vectors(
     migrated_database_url: str, queued_job: IngestionJobInput,
-    embedder: LocalEmbedder, monkeypatch: pytest.MonkeyPatch,
+    embedder: DocumentEmbedder, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def embed_with_concurrent_edit(model: LocalEmbedder, texts: list[str]) -> list[list[float]]:
+    def embed_with_concurrent_edit(model: DocumentEmbedder, texts: list[str]) -> list[list[float]]:
         with connect_database(migrated_database_url) as connection:
             connection.execute(
                 "UPDATE document SET revision = 3, source_text = 'New source', status = 'queued' WHERE id = %s",
                 (queued_job.document_id,),
             )
-        return [[1.0] + [0.0] * 383 for text in texts]
+        return [[1.0] + [0.0] * 1535 for text in texts]
 
     monkeypatch.setattr(ingestion_service, "embed_documents", embed_with_concurrent_edit)
     assert ingest_document(migrated_database_url, queued_job, embedder) == "ignored"
@@ -228,26 +226,26 @@ def test_edit_during_embedding_discards_stale_vectors(
         ).fetchone() == (0,)
 
 
-def test_token_limit_rejection_records_safe_failure_without_partial_chunks(
+def test_chunk_limit_rejection_records_safe_failure_without_partial_chunks(
     migrated_database_url: str, queued_job: IngestionJobInput,
-    embedder: LocalEmbedder, monkeypatch: pytest.MonkeyPatch,
+    embedder: DocumentEmbedder, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def reject_input(model: LocalEmbedder, texts: list[str]) -> list[list[float]]:
-        raise EmbeddingInputError("Chunk exceeds the 384-content-token budget")
+    def reject_input(model: DocumentEmbedder, texts: list[str]) -> list[list[float]]:
+        raise EmbeddingInputError("Embedding chunk exceeds the configured character limit")
 
     monkeypatch.setattr(ingestion_service, "embed_documents", reject_input)
     assert ingest_document(migrated_database_url, queued_job, embedder) == "failed"
     with connect_database(migrated_database_url) as connection:
         assert connection.execute(
             "SELECT status, processing_error FROM document WHERE id = %s", (queued_job.document_id,),
-        ).fetchone() == ("failed", "Chunk exceeds the 384-content-token budget")
+        ).fetchone() == ("failed", "Embedding chunk exceeds the configured character limit")
         assert connection.execute(
             "SELECT count(*) FROM document_chunk WHERE document_id = %s", (queued_job.document_id,),
         ).fetchone() == (0,)
 
 
-def test_long_text_is_token_chunked_and_every_chunk_has_a_vector(
-    migrated_database_url: str, queued_job: IngestionJobInput, embedder: LocalEmbedder,
+def test_long_text_is_character_chunked_and_every_chunk_has_a_vector(
+    migrated_database_url: str, queued_job: IngestionJobInput, embedder: DocumentEmbedder,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         connection.execute(
@@ -260,13 +258,12 @@ def test_long_text_is_token_chunked_and_every_chunk_has_a_vector(
             (queued_job.document_id,),
         ).fetchall()
         assert len(rows) >= 3
-        assert any(len(str(row[0])) > 1000 for row in rows)
-        assert all(count_input_tokens(embedder.tokenizer, str(row[0])) <= 386 for row in rows)
-        assert all(row[1] == 384 for row in rows)
+        assert all(len(str(row[0])) <= CHUNKING_SETTINGS.chunk_size for row in rows)
+        assert all(row[1] == 1536 for row in rows)
 
 
 def test_oversized_source_records_safe_failure_without_chunks(
-    migrated_database_url: str, queued_job: IngestionJobInput, embedder: LocalEmbedder,
+    migrated_database_url: str, queued_job: IngestionJobInput, embedder: DocumentEmbedder,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         connection.execute(
@@ -290,7 +287,7 @@ def test_oversized_source_records_safe_failure_without_chunks(
 def test_pdf_source_selects_extraction_and_persists_pages_or_safe_failure(
     migrated_database_url: str, queued_job: IngestionJobInput,
     filename: str, expected_error: str | None, monkeypatch: pytest.MonkeyPatch,
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
@@ -337,7 +334,7 @@ def test_pdf_source_selects_extraction_and_persists_pages_or_safe_failure(
 def test_pdf_download_is_not_called_for_wrong_owner_or_stale_revision(
     migrated_database_url: str, queued_job: IngestionJobInput, change: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         connection.execute(
@@ -362,7 +359,7 @@ def test_pdf_download_is_not_called_for_wrong_owner_or_stale_revision(
 
 def test_pdf_download_failure_remains_retryable(
     migrated_database_url: str, queued_job: IngestionJobInput, monkeypatch: pytest.MonkeyPatch,
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
 ) -> None:
     with connect_database(migrated_database_url) as connection:
         connection.execute(
