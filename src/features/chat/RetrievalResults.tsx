@@ -33,7 +33,9 @@ function SourceRow({ chunk, label, id }: { chunk: RetrievedChunk; label: string;
 
 export function RetrievalResults({ run, generation, answer, messageId, pending, onRetry }: RetrievalResultsProps) {
     const selected = generation?.selectedChunkIds ?? [];
-    const citedNumbers = generation?.status === "completed" ? [...new Set(citationNumbers(answer))].sort((a, b) => a - b) : [];
+    const citedNumbers = generation?.status === "completed"
+        ? [...new Set(citationNumbers(answer).filter((number) => selected[number - 1] !== undefined))].sort((a, b) => a - b)
+        : [];
 
     return <section className="mt-4 min-w-0" aria-label="Answer sources">
         {run.status !== "completed" && <div className="space-y-2">
@@ -53,6 +55,8 @@ export function RetrievalResults({ run, generation, answer, messageId, pending, 
                 })}
             </ol>
         </div>}
+
+        {generation?.status === "completed" && citedNumbers.length === 0 && <p className="mb-3 text-sm text-muted-foreground">No citations found in this answer.</p>}
 
         <details className="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
             <summary className="min-h-11 cursor-pointer py-3 focus-visible:outline-2 focus-visible:outline-accent">All retrieved chunks ({run.chunks.length})</summary>
