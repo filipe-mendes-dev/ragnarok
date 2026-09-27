@@ -1,6 +1,6 @@
 # RAGnarok backlog
 
-Last updated: 2026-09-25
+Last updated: 2026-09-27
 
 Record deferred work here when it is agreed. The [roadmap](roadmap.md) owns phase
 order; this file owns the details of follow-ups. An unchecked item is unfinished,
@@ -93,8 +93,8 @@ deferred unless explicitly stated.
 
 ## Ingestion quality and later decisions
 
-- [ ] **Evaluate chunk settings with retrieval.** Current ingestion defaults are 384 BGE
-  content tokens and 48 target overlap. Review a representative corpus and retrieval
+- [ ] **Evaluate chunk settings with retrieval.** Current ingestion defaults are 1,000
+  Unicode characters and 150 target overlap. Review a representative corpus and retrieval
   results before claiming these values are optimal.
 - [ ] **Broaden PDF extraction fixtures.** Layout mode fixes the inspected letter;
   add synthetic positioned-word, column, and table examples to check reading order.

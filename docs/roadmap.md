@@ -1,6 +1,6 @@
 # RAGnarok Implementation Roadmap
 
-Last updated: 2026-09-21
+Last updated: 2026-09-27
 
 ## Working rule
 
@@ -95,7 +95,7 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 - [x] Install pypdf and verify extraction plus page-aware chunking on synthetic PDF fixtures, including blank pages, encryption, malformed input, and deterministic global ordinals.
 - [x] Adapt the ingestion service to database source type and atomically persist PDF page metadata; test ownership, revisions, duplicate delivery, and safe extraction failures with the storage boundary replaced in tests.
 - [x] Install boto3 and verify the S3 loader against disposable MinIO through the real worker.
-- [x] Enforce a 30-second deadline for PDF download and extraction in one terminable child process. Phase 5 token-aware chunking and embedding run in the parent afterward.
+- [x] Enforce a 30-second deadline for PDF download and extraction in one terminable child process. Phase 5 chunking and embedding run in the parent afterward.
 - [x] Disable Redis by default and remove the web application's Redis requirement.
 - [x] Add RabbitMQ configuration and a Python consumer client.
 - [x] Install amqplib and connect the TypeScript publisher to text submission.
@@ -123,9 +123,9 @@ Failure test: terminate the worker mid-job, restart it, and verify a retry canno
 
 Target: Day 5
 
-- [x] Select local BGE-small English through FastEmbed/ONNX Runtime, 384 dimensions, and cosine similarity for the normalized vectors.
-- [x] Generate token-aware chunk embeddings during text/PDF ingestion and atomically persist vectors, model identity, and completion in pgvector. Existing chunks require explicit re-ingestion.
-- [x] Embed standalone queries through the shared resident Python model service and retrieve five exact cosine candidates.
+- [x] Establish a local BGE-small English baseline, then switch ingestion and query embeddings to `openai/text-embedding-3-small` through OpenRouter at 1,536 dimensions.
+- [x] Generate chunk embeddings during text/PDF ingestion and atomically persist vectors, model identity, and completion in pgvector. Existing development documents can be recreated as needed.
+- [x] Embed standalone queries through OpenRouter and retrieve five exact cosine candidates.
 - [x] Apply ownership, selected documents, completed status, current revision, and compatible embedding filters inside retrieval queries.
 - [x] Persist retrieval timings, cosine scores, evidence snapshots, and safe failures; show them in chat.
 

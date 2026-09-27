@@ -4,7 +4,7 @@
 
 - Status: Draft approved for implementation planning
 - Product version: V1 portfolio release
-- Last updated: 2026-09-21
+- Last updated: 2026-09-27
 
 These are V1 requirements, not a list of shipped features. See the
 [roadmap](roadmap.md) for implementation status and [backlog](todo.md) for deferred work.
@@ -238,7 +238,7 @@ ceiling. Operators may set `PDF_MAX_PAGES` and `PDF_MAX_EXTRACTED_CHARACTERS`.
 
 ## Open product decisions
 
-- Generation provider/model; the initial embedding implementation uses local BGE-small English
+- Generation provider/model; embeddings now use `openai/text-embedding-3-small` through OpenRouter
 - Production object-storage provider
 - Whether reranking fits before the deployment milestone
 - Whether the public deployment offers self-service accounts or a controlled demo account
