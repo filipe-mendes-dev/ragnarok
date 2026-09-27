@@ -6,9 +6,9 @@ consumes RabbitMQ jobs, extracts PDF text, splits text with LangChain, and persi
 chunks in PostgreSQL. Original PDFs remain in S3-compatible storage.
 
 Text/PDF ingestion, semantic retrieval, and plain answer generation work locally.
-One internal Python service loads the embedding model and serves both ingestion
-and queries. Chat saves retrieval and generation details. Linked citations,
-production deployment, and reliability hardening remain subsequent milestones.
+The web app and Python worker request embeddings from OpenRouter. Chat saves retrieval
+and generation details and links available citations. Production deployment and
+reliability hardening remain subsequent milestones.
 
 ## Documentation
 
@@ -42,16 +42,12 @@ In a separate terminal, from `worker/`:
 
 ```bash
 uv sync
-uv run --env-file ../.env python -m ragnarok_ingestion.embedding_server
+uv run --env-file ../.env worker
 ```
 
-Provision the pinned model following [the worker guide](worker/README.md#local-embeddings).
-Set `EMBEDDING_SERVICE_URL=http://127.0.0.1:8081` in the existing root `.env`.
-Then start `uv run --env-file ../.env worker` in another terminal from `worker/`.
-
-To generate answers, set `OPENROUTER_API_KEY` and `GENERATION_MODEL` in the root
-`.env`. The model value is an OpenRouter model slug. Chat can still show retrieval
-results without these values, but generation reports that it is not configured.
+Set `OPENROUTER_API_KEY` in the root `.env` before starting Next.js or the worker.
+Embeddings use `openai/text-embedding-3-small` through OpenRouter. To generate
+answers, also set `GENERATION_MODEL` to an OpenRouter model slug.
 `GENERATION_MAX_OUTPUT_TOKENS` defaults to 2048 and `GENERATION_TIMEOUT_MS` defaults
 to 45000. Set either in `.env` and restart Next.js to change the limits.
 Generation runs retain the model, token counts, finish reason, provider response ID,
@@ -59,7 +55,7 @@ latency, and a safe error code. Server logs use the run and attempt IDs to corre
 provider responses without logging prompts or answers.
 
 Open http://localhost:3000, sign in, submit text or upload a PDF, and refresh the
-document list to see its status. Next.js, the worker, and the embedding service must
+document list to see its status. Next.js and the worker must
 be running. Ask a short, standalone English question in Chat to get an answer and
 inspect the retrieved chunks.
 See the worker guide for recovery limitations and how to inspect failures.
@@ -70,6 +66,7 @@ From the repository root, `npm run check` runs lint, type checking, and TypeScri
 unit/integration tests. `npm run build` checks the production web build.
 From `worker/`, run `uv run python -m pytest tests/unit` or
 `uv run python -m pytest tests/integration`.
-Integration tests require Docker, the Python environment, and the provisioned model.
-They use disposable Testcontainers infrastructure. The synthetic ranking benchmark
-and its limitations are described in [retrieval.md](docs/retrieval.md).
+Integration tests require Docker and the Python environment. They use disposable
+Testcontainers infrastructure and a local OpenRouter-shaped test server. The
+synthetic ranking benchmark and its limitations are described in
+[retrieval.md](docs/retrieval.md).

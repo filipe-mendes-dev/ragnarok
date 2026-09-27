@@ -17,7 +17,7 @@ const chunk: RetrievedChunk = {
 };
 
 describe("AnswerContent", () => {
-    it("formats Markdown and links only validated citations to available evidence", () => {
+    it("formats Markdown and links only matching citations to available evidence", () => {
         const html = renderToStaticMarkup(<AnswerContent
             content={"**Cancel anytime** [S1]\n\n- No fee\n\n[External](https://example.com) <script>unsafe</script> ![image](https://example.com/image.png)"}
             generation={generation} chunks={[chunk]} messageId="message-1"
@@ -34,6 +34,25 @@ describe("AnswerContent", () => {
     it("shows an unavailable label after its evidence snapshot is removed", () => {
         const html = renderToStaticMarkup(<AnswerContent content="Cancel anytime [S1]" generation={generation} chunks={[]} messageId="message-1" />);
         expect(html).toContain("source unavailable");
+        expect(html).not.toContain("href=");
+    });
+
+    it("renders a Markdown table and links corner-bracket citations", () => {
+        const html = renderToStaticMarkup(<AnswerContent
+            content={"| Category | Duration |\n| --- | --- |\n| Sub-15 | 30 minutes 【S1】 |"}
+            generation={generation} chunks={[chunk]} messageId="message-1"
+        />);
+        expect(html).toContain("<table");
+        expect(html).toContain("<th");
+        expect(html).toContain("<td");
+        expect(html).toContain('href="#source-message-1-1"');
+        expect(html).not.toContain("【S1】");
+    });
+
+    it("leaves an unknown source marker as plain text", () => {
+        const html = renderToStaticMarkup(<AnswerContent content="Cancel anytime [S2]" generation={generation} chunks={[chunk]} messageId="message-1" />);
+        expect(html).toContain("[S2]");
+        expect(html).not.toContain("source unavailable");
         expect(html).not.toContain("href=");
     });
 

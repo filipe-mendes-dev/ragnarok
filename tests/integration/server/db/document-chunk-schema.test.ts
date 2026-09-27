@@ -18,7 +18,7 @@ let configId: string;
 
 function createConfigInput(): NewChunkConfigRow {
     return {
-        chunkingMethod: "recursive-character-v1",
+        chunkingMethod: "test-schema-character-v1",
         chunkSize: 1_000,
         chunkOverlap: 150,
     };
@@ -53,11 +53,11 @@ const invalidCases: InvalidChunkCase[] = [
     { description: "negative ordinal", changes: { ordinal: -1 }, constraint: "document_chunk_ordinal_nonnegative" },
     { description: "whitespace-only text", changes: { text: " \t\n" }, constraint: "document_chunk_text_not_blank" },
     { description: "nonpositive page", changes: { pageNumber: 0 }, constraint: "document_chunk_page_number_positive" },
-    { description: "vector without model identity", changes: { embedding: Array<number>(384).fill(1) }, constraint: "document_chunk_embedding_complete" },
+    { description: "vector without model identity", changes: { embedding: Array<number>(1536).fill(1) }, constraint: "document_chunk_embedding_complete" },
     { description: "model identity without vector", changes: { embeddingModel: "model", embeddingRevision: "revision" }, constraint: "document_chunk_embedding_complete" },
-    { description: "vector without revision", changes: { embedding: Array<number>(384).fill(1), embeddingModel: "model" }, constraint: "document_chunk_embedding_complete" },
-    { description: "blank embedding model", changes: { embedding: Array<number>(384).fill(1), embeddingModel: " ", embeddingRevision: "revision" }, constraint: "document_chunk_embedding_complete" },
-    { description: "blank embedding revision", changes: { embedding: Array<number>(384).fill(1), embeddingModel: "model", embeddingRevision: " " }, constraint: "document_chunk_embedding_complete" },
+    { description: "vector without revision", changes: { embedding: Array<number>(1536).fill(1), embeddingModel: "model" }, constraint: "document_chunk_embedding_complete" },
+    { description: "blank embedding model", changes: { embedding: Array<number>(1536).fill(1), embeddingModel: " ", embeddingRevision: "revision" }, constraint: "document_chunk_embedding_complete" },
+    { description: "blank embedding revision", changes: { embedding: Array<number>(1536).fill(1), embeddingModel: "model", embeddingRevision: " " }, constraint: "document_chunk_embedding_complete" },
 ];
 
 describe("document chunk constraints", () => {
@@ -94,11 +94,11 @@ describe("document chunk constraints", () => {
         });
     });
 
-    it("persists a 384-dimensional vector with its model identity", async () => {
+    it("persists a 1536-dimensional vector with its model identity", async () => {
         const input = {
             ...createChunkInput(await seedOwnedDocument(), configId),
-            embedding: [1, ...Array<number>(383).fill(0)],
-            embeddingModel: "BAAI/bge-small-en-v1.5",
+            embedding: [1, ...Array<number>(1535).fill(0)],
+            embeddingModel: "openai/text-embedding-3-small",
             embeddingRevision: "test-revision",
         };
         await database.insert(documentChunk).values(input);

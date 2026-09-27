@@ -3,7 +3,7 @@
 ## Document status
 
 - Status: Accepted for V1 implementation
-- Last updated: 2026-09-21
+- Last updated: 2026-09-27
 - Related product definition: `docs/product-requirements.md`
 
 ## Architectural summary
@@ -12,11 +12,12 @@ RAGnarok V1 has a TypeScript web application and a Python ingestion worker in on
 
 1. A Next.js web process that renders the UI and owns the browser-facing HTTP boundary.
 2. A Python RabbitMQ worker process that performs asynchronous document ingestion.
-3. One internal Python HTTP embedding process that loads the model once and serves both the worker and Next.js.
+
+Next.js and the worker request embeddings directly from OpenRouter. There is no internal Python HTTP API.
 
 The web application owns TypeScript services under `src/server`. The worker owns Python ingestion services under `worker/src/ragnarok_ingestion`. They share a versioned JSON message contract and the PostgreSQL schema, not executable modules. Drizzle remains the sole migration owner; Python repositories query that schema without a second migration system. PostgreSQL is the durable system of record. RabbitMQ coordinates background jobs. Original PDFs live in S3-compatible object storage.
 
-Next.js remains the browser-facing backend. A narrow internal Python embedding API is now justified by sharing one resident local model between synchronous queries and asynchronous ingestion. It owns inference only, with no database access or browser authentication. A broader Fastify, NestJS, or Python application API remains unnecessary.
+Next.js remains the browser-facing backend. The Python worker remains useful for asynchronous PDF extraction, chunking, and ingestion. A separate Python HTTP API is unnecessary while both runtimes can call OpenRouter directly.
 
 ## V1 stack
 
@@ -45,7 +46,7 @@ This table includes planned retrieval, deployment, and CI components. See the
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
 | CI/CD | GitHub Actions | Lint, type checking, tests, build, and later deployment |
 
-Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. Ingestion uses local BGE-small English embeddings through FastEmbed/ONNX Runtime. Generation calls OpenRouter through a server-only adapter with a configurable model. The production object-storage provider remains an implementation decision.
+Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. Ingestion and query retrieval use `openai/text-embedding-3-small` through OpenRouter. Generation also calls OpenRouter through a server-only adapter with a configurable model. The production object-storage provider remains an implementation decision.
 
 ## Repository structure
 
@@ -150,7 +151,7 @@ It does not import database clients, Node-only APIs, secrets, RabbitMQ, or provi
 
 ### `worker/src/ragnarok_ingestion`
 
-Contains Python ingestion behavior. The entry point configures logging, loads the matching tokenizer and HTTP embedding adapter, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text using the model tokenizer and requests embeddings from the shared service before persistence.
+Contains Python ingestion behavior. The entry point configures logging, loads the OpenRouter embedding adapter, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text by character count and requests embeddings from OpenRouter before persistence.
 
 ## Client and server dependency graphs
 
@@ -290,7 +291,7 @@ Each `document_chunk` row stores:
 - `chunk_config_id`: required reference to the configuration that produced this chunk.
 - `created_at`: insertion timestamp.
 
-The unique index on `(document_id, revision, ordinal)` prevents duplicate positions and supports document/revision lookups. Settings live in `chunk_config`, with a UUID, `chunking_method`, `chunk_size`, `chunk_overlap`, and creation timestamp. A unique index on method, size, and overlap allows reuse across documents. The method identifies the size unit: legacy configurations count Unicode code points; BGE configurations count model tokens. Referenced configurations cannot be deleted. Configurations must be treated as immutable by application services: new settings or method versions get a different row. The schema does not prevent direct SQL updates to a configuration.
+The unique index on `(document_id, revision, ordinal)` prevents duplicate positions and supports document/revision lookups. Settings live in `chunk_config`, with a UUID, `chunking_method`, `chunk_size`, `chunk_overlap`, and creation timestamp. A unique index on method, size, and overlap allows reuse across documents. The method identifies the size unit: the current method counts Unicode characters, while the historical BGE method counted tokenizer tokens. Referenced configurations cannot be deleted. Configurations must be treated as immutable by application services: new settings or method versions get a different row. The schema does not prevent direct SQL updates to a configuration.
 
 The ingestion service must check text length against the selected configuration and use one configuration within a replacement set, check the current revision, and replace chunks plus completion status atomically. A PostgreSQL CHECK cannot read the referenced configuration, so text length is no longer checked against size on the chunk row. Constraints alone do not enforce those workflow rules. The schema allows multiple revisions to coexist; the replacement workflow determines which set remains active.
 
@@ -298,35 +299,35 @@ The original Phase 4 schema contained no embeddings. Phase 5 migration
 `0005_groovy_swordsman.sql` adds `embedding vector(384)`, `embedding_model`, and
 `embedding_revision`. A check constraint requires either all three fields or none,
 preserving legacy rows without inventing vectors. New ingestion always writes all
-three. Existing documents are not automatically requeued. Future retrieval must
-filter out null vectors and require compatible model/revision metadata as well as
+three. Existing documents are not automatically requeued. Retrieval filters out
+null vectors and requires compatible model/revision metadata as well as
 ownership and completed status. Drizzle owns migrations; Python writes through
 Psycopg using parameterized vector casts. That schema step added no vector index or lexical fields. Semantic retrieval is now implemented as described in [retrieval.md](retrieval.md); exact search uses the existing relational indexes.
 
-## Local embedding ingestion
+## Embedding ingestion
 
-The application provisions Qdrant's quantized ONNX artifact for `BAAI/bge-small-en-v1.5`
-at revision `52398278842ec682c6f32300af41344b1c0b0bb2`. The loader reads a local
-folder and never downloads at runtime. `EMBEDDING_MODEL_DIR` optionally overrides
-`worker/models/bge-small-en-v1.5`; it must contain this exact artifact. File hashes
-are not checked at load time. The model is English-only, produces 384-dimensional
-normalized vectors, and runs with two inference threads and batches of eight.
+The initial Phase 5 implementation used local BGE-small English vectors in
+`vector(384)`. Drizzle-generated migration `0010_drop-legacy-embeddings.sql`
+removes the old vector and model columns; `0011_add-openrouter-embeddings.sql`
+adds them back with `vector(1536)` for `openai/text-embedding-3-small` through
+OpenRouter. Existing chunks retain their text but no embeddings. During development,
+recreate sample documents if retrieval of them is needed.
 
-Production chunking now uses 384 content tokens with 48 target overlap, identified
-by `recursive-bge-small-en-v1.5-token-v1`. Older `recursive-character-v1` settings
-remain character counts. The tokenizer checks complete inputs against 512 tokens;
-oversized input is rejected rather than silently truncated. PDF pages are chunked
-separately to preserve citation page numbers. The character-based chunking example
-remains available, but production ingestion uses the token-aware wrapper.
+The worker splits text into 1,000-character chunks with a target overlap of 150.
+The method identifier is `recursive-character-v1`. Page boundaries remain intact for PDF citations.
+Both query and document requests specify 1,536 dimensions. Model and configuration
+revision filters prevent old or incompatible vectors from entering retrieval.
+`openrouter-1536-v1` is an application configuration identifier, not an upstream
+model snapshot. The embedding provider adapter is separate from chunking and
+retrieval. Changes to dimensions require a schema migration. Changing chunk size
+or overlap creates a distinct configuration row; changing the splitting algorithm
+or size unit requires a new method identifier.
 
 Parsing, chunking, embedding, and persistence remain separate functions within one
-job. No intermediate checkpoints are persisted. Computation happens outside the
-final transaction; the existing owned-revision update, chunk/vector replacement,
-and completion commit atomically. A concurrent edit discards stale results. Safe
-embedding-input rejections mark the matching revision failed; unexpected model
-errors retain the existing unacknowledged-message behavior. Old chunks and vectors
-survive failed preparation or a rolled-back replacement. Existing retry/shutdown
-limitations still apply. TypeScript query embedding now calls the shared Python service through a validated HTTP adapter.
+job. Computation happens outside the final transaction. The existing owned-revision
+update, chunk/vector replacement, and completion commit atomically. A concurrent
+edit discards stale results. Safe embedding-input rejections mark the matching
+revision failed; provider failures retain unacknowledged-message retry behavior.
 
 ## Python worker integration
 
@@ -342,7 +343,7 @@ Python services own transaction boundaries and pass a connection to repositories
 
 A short transaction transitions queued or interrupted processing work to processing. Chunking and embedding run outside a transaction. The final transaction conditionally updates the same owned revision to completed, locking the document row, then replaces its chunks and vectors. All writes become visible together at commit. A concurrent edit either wins before this transaction and causes a no-op, or waits until it commits. Existing chunks and vectors survive a failed replacement. Configuration rows are inserted only when their method/size/overlap combination is absent; existing settings are never changed.
 
-The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Queued or processing text and PDF documents are eligible. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors, failed PDF downloads, unavailable embedding service, and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
+The receiver uses prefetch 1 and acknowledges after the service returns a committed outcome or an inapplicable job. Queued or processing text and PDF documents are eligible. Invalid messages are rejected to a separate diagnostic queue. Temporary database errors, failed PDF downloads, unavailable embedding provider, and a busy advisory lock receive three attempts per delivery, with delays of one and two seconds. Exhaustion or unexpected processing errors stop the worker without acknowledgement. Restart permits redelivery, but a durable attempt limit, terminal handling of unexpected errors, automatic restart supervision, and publication recovery remain unfinished. This is not yet the full Phase 4 reliability implementation.
 
 Using Python means SQL queries do not inherit Drizzle's compile-time schema checks. Typed row mapping, shared contract fixtures, and database integration tests must catch drift. Implement Python ingestion operations only; do not copy the web application's upload and listing services.
 
@@ -359,7 +360,7 @@ Several related inputs may share a domain file. Scalar validators may keep names
 ### Local development
 
 ```text
-Host: Next.js dev server + Python worker + one Python embedding HTTP process
+Host: Next.js dev server + Python worker
 Docker: PostgreSQL/pgvector + RabbitMQ + S3-compatible local storage
 Integration tests: disposable PostgreSQL/pgvector; focused RabbitMQ and S3 adapter tests use disposable containers
 ```
@@ -376,19 +377,19 @@ Internet
 
 RabbitMQ
 -> one Python RabbitMQ worker container
--> PostgreSQL, object storage, and the internal embedding HTTP service
+-> PostgreSQL, object storage, and OpenRouter
 
-Next.js and Python worker
--> one Python embedding service with one resident model
+Next.js
+-> OpenRouter for query embeddings and generation
 ```
 
-Production packaging will use Node.js web, Python worker, and a single Python embedding-service process. Two web containers demonstrate stateless application replication on one host, not machine-level high availability.
+Production packaging will use Node.js web and Python worker processes. Two web containers demonstrate stateless application replication on one host, not machine-level high availability.
 
 ## Why Next.js retains the application backend
 
-Next.js owns browser authentication, rendering, document workflows, chat, and retrieval SQL. The internal FastAPI server owns only shared local inference. Both the ingestion worker and Next.js call it, avoiding duplicate model instances. It adds a real HTTP failure boundary, timeouts, capacity limits, and another process to supervise.
+Next.js owns browser authentication, rendering, document workflows, chat, and retrieval SQL. Both Next.js and the Python worker call OpenRouter for embeddings with the same configured model and dimensions. The worker remains separate because document extraction and ingestion are asynchronous jobs.
 
-Moving existing application services into another API framework is not required for this inference boundary. A broader Python backend remains an option if future retrieval needs justify it, rather than a prerequisite for semantic search. See [retrieval.md](retrieval.md) for the current runtime contract.
+Moving existing application services into another API framework is not required for this workflow. A broader Python backend remains an option if future retrieval needs justify it, rather than a prerequisite for semantic search. See [retrieval.md](retrieval.md) for the current runtime contract.
 
 ## Evolution path
 
@@ -430,8 +431,8 @@ sequenceDiagram
     alt PDF source
         S->>S: Child downloads S3 object and extracts layout text
     end
-    S->>S: Split text/pages using BGE token counts
-    S->>S: Request chunk embeddings from the shared internal CPU model service
+    S->>S: Split text/pages into character-sized chunks
+    S->>S: Request chunk embeddings from OpenRouter
     S->>DB: Commit replacement chunks, vectors, and completed together
     S->>DB: Close connection and release lock
     S-->>W: Outcome
@@ -514,7 +515,7 @@ returning validated JSON pages. Original PDF bytes stay in the child.
 The parent retains all database access, revision checks, and acknowledgement work.
 
 One 30-second deadline covers child startup, downloading, extraction,
-and result transfer. Token-aware chunking and embedding now run in the parent and
+and result transfer. Character-based chunking and embedding now run in the parent and
 are not covered by this PDF deadline; source-size limits and small inference batches
 bound the input. No whole-ingestion execution deadline is implemented yet.
 `subprocess.run` kills and waits for an overdue child; the service records a safe
@@ -542,7 +543,7 @@ Detailed deferred work and completion conditions are tracked in [todo.md](todo.m
 
 ## Delivery sequencing
 
-The text/PDF ingestion flow and semantic retrieval share local embeddings. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Validated source labels link to saved evidence snapshots, and a POST route streams progress and answer text over SSE. Publication recovery, durable retry limits, document retry UI, shutdown
+The text/PDF ingestion flow and semantic retrieval use the same configured OpenRouter embedding model. Chat displays retrieved chunks and persisted retrieval runs. Generation uses a separate OpenRouter adapter and run record, with the answer stored in the assistant message. Matching source labels link to saved evidence snapshots, while answers without matching citations display a notice. A POST route streams progress and answer text over SSE. Publication recovery, durable retry limits, document retry UI, shutdown
 supervision, and broader failure testing are deferred until that product path works,
 and remain required reliability follow-ups before public deployment. Preserve the
 existing ownership, revision, atomic-write, and execution-limit protections. Continue

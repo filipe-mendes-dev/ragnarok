@@ -1,6 +1,4 @@
-export const EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5";
-export const EMBEDDING_REVISION = "Qdrant/bge-small-en-v1.5-onnx-Q@52398278842ec682c6f32300af41344b1c0b0bb2";
-export const EMBEDDING_DIMENSIONS = 384;
+export { EMBEDDING_MODEL, EMBEDDING_REVISION, EMBEDDING_DIMENSIONS } from "@/server/embedding/embedding-config";
 export const RETRIEVAL_LIMIT = 5;
 
 export interface QueryEmbedding {

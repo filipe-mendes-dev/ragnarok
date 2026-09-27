@@ -15,12 +15,12 @@ from ragnarok_ingestion.consumer import (
     declare_ingestion_queue,
 )
 from ragnarok_ingestion.database import connect_database
-from ragnarok_ingestion.embedding import LocalEmbedder
+from ragnarok_ingestion.embedding import DocumentEmbedder
 
 
 def test_worker_persists_real_delivery_and_rejects_invalid_json(
     migrated_database_url: str,
-    embedder: LocalEmbedder,
+    embedder: DocumentEmbedder,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("INGESTION_QUEUE_NAME", "test.ingestion")
