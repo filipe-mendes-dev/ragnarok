@@ -1,4 +1,4 @@
-"""From worker/: uv run python examples/chunk_text.py"""
+"""From apps/ingestion-worker/: uv run python examples/chunk_text.py"""
 
 from ragnarok_ingestion.chunking import CHUNKING_METHOD, ChunkingSettings, chunk_text
 

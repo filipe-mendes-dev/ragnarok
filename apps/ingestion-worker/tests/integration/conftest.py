@@ -12,7 +12,8 @@ from testcontainers.community.postgres import PostgresContainer
 from ragnarok_ingestion.database import connect_database
 from ragnarok_ingestion.embedding import EMBEDDING_DIMENSIONS
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+WEB_ROOT = REPOSITORY_ROOT / "apps" / "web"
 
 
 class FakeEmbedder:
@@ -40,7 +41,7 @@ def migrated_database_url() -> Iterator[str]:
         )
         subprocess.run(
             ["npm", "run", "db:migrate"],
-            cwd=REPOSITORY_ROOT,
+            cwd=WEB_ROOT,
             env={**os.environ, "DATABASE_URL": database_url},
             check=True,
             capture_output=True,

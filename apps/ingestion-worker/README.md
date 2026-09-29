@@ -7,15 +7,15 @@ and completion status. Next.js handles document submission and query embedding.
 
 ## Install and run
 
-From `worker/`:
+From `apps/ingestion-worker/`:
 
 ```bash
 uv sync
-uv run --env-file ../.env worker
+uv run --env-file .env worker
 ```
 
-Apply committed Drizzle migrations with `npm run db:migrate` from the repository
-root before starting the worker. The worker does not migrate its database. Its
+Apply committed Drizzle migrations with `npm run db:migrate` from `apps/web/`
+before starting the worker. The worker does not migrate its database. Its
 environment needs `DATABASE_URL`, `RABBITMQ_URL`, distinct
 `INGESTION_QUEUE_NAME` and `INGESTION_REJECTED_QUEUE_NAME` values, and
 `OPENROUTER_API_KEY`. PDF ingestion also needs the S3 variables from
@@ -67,7 +67,7 @@ storage, provider, or lock failures get three attempts within one delivery, with
 one- and two-second delays. If those fail, the worker exits without acknowledging;
 restart permits redelivery. The durable attempt limit, automatic restart,
 publication recovery, and user-facing retry action remain future work in the
-[backlog](../docs/todo.md).
+[backlog](../../docs/todo.md).
 
 Invalid queue JSON is rejected to the diagnostic queue without logging its body.
 Safe input and PDF failures mark the matching document revision failed. Provider
@@ -85,7 +85,7 @@ are embedded through OpenRouter during normal ingestion.
 
 ## Verification
 
-From `worker/`, with Docker and root npm dependencies available:
+From `apps/ingestion-worker/`, with Docker and web npm dependencies available:
 
 ```bash
 uv run python -m pytest tests/unit -v
@@ -96,6 +96,6 @@ Integration tests apply committed migrations to disposable Testcontainers
 PostgreSQL and use disposable RabbitMQ where needed. The TypeScript broker test
 starts the real Python worker against a local OpenRouter-shaped test server, so
 normal tests do not spend API credits. To inspect a live model response manually,
-set the API key and run `uv run --env-file ../.env python examples/embed_text.py`.
+set the API key and run `uv run --env-file .env python examples/embed_text.py`.
 The separate opt-in ranking benchmark is described in
-[retrieval.md](../docs/retrieval.md).
+[retrieval.md](../../docs/retrieval.md).

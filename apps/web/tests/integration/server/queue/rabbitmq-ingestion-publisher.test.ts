@@ -24,6 +24,7 @@ import {
 
 const INGESTION_QUEUE_NAME = "test.ingestion";
 const REJECTED_INGESTION_QUEUE_NAME = "test.rejected";
+const INGESTION_WORKER_ROOT = resolve("..", "ingestion-worker");
 
 const job: IngestionJobInput = {
     version: 1,
@@ -99,8 +100,8 @@ describe("publishIngestionJob", () => {
         const owner = await userSeeder.seed({ name: "Pipeline owner" });
         const service = createDocumentService(createDocumentRepository(database),
             publishIngestionJob);
-        const worker = spawn(resolve("worker/.venv/bin/python"), ["-m", "ragnarok_ingestion"], {
-            cwd: resolve("worker"),
+        const worker = spawn(resolve(INGESTION_WORKER_ROOT, ".venv/bin/python"), ["-m", "ragnarok_ingestion"], {
+            cwd: INGESTION_WORKER_ROOT,
             env: { ...process.env, DATABASE_URL: inject("databaseUrl"), RABBITMQ_URL: rabbitmqUrl,
                 OPENROUTER_API_KEY: "test-openrouter-key", OPENROUTER_EMBEDDINGS_URL: embeddings.url,
                 S3_ENDPOINT: storageEndpoint, S3_REGION: "us-east-1", S3_BUCKET: "ingestion-test",
@@ -119,7 +120,7 @@ describe("publishIngestionJob", () => {
                 });
                 documentId = saved.id;
             } else {
-                const pdf = await readFile(resolve("worker/tests/fixtures/pdf/three-pages.pdf"));
+                const pdf = await readFile(resolve(INGESTION_WORKER_ROOT, "tests/fixtures/pdf/three-pages.pdf"));
                 const uploads = createDocumentUploadService(createDocumentRepository(database),
                     createS3DocumentObjectStorage(s3, "ingestion-test"),
                     async (input) => {

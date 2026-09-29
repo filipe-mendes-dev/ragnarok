@@ -1,4 +1,4 @@
-"""From worker/: uv run python examples/embed_text.py"""
+"""From apps/ingestion-worker/: uv run python examples/embed_text.py"""
 
 from math import isclose
 from itertools import batched

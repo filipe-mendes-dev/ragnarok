@@ -28,7 +28,7 @@ curl -L --fail https://fpp.pt/wp-content/uploads/2025-HP-Regras_Jogo_Regulamento
 
 ## Run
 
-From `worker/`:
+From `apps/ingestion-worker/`:
 
 ```bash
 uv run --group benchmark python -m benchmarks.compare_pdf_parsers
@@ -37,7 +37,7 @@ uv run --group benchmark python -m benchmarks.compare_pdf_parsers
 `uv run` installs the benchmark group when needed. The explicit two-step
 alternative is `uv sync --group benchmark`, followed by
 `uv run --no-sync python -m benchmarks.compare_pdf_parsers` for repeated runs.
-Run either form from `worker/`, where `benchmarks` is importable as a Python
+Run either form from `apps/ingestion-worker/`, where `benchmarks` is importable as a Python
 namespace package.
 
 The script's `PDFS` list fixes the three complete input PDFs. Edit that list to

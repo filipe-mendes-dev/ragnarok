@@ -1,4 +1,4 @@
-"""Run with uv run --env-file ../.env python -m ragnarok_ingestion."""
+"""Run with uv run --env-file .env python -m ragnarok_ingestion."""
 
 import asyncio
 import logging
