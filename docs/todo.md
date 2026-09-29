@@ -96,9 +96,10 @@ deferred unless explicitly stated.
 - [ ] **Evaluate chunk settings with retrieval.** Current ingestion defaults are 1,000
   Unicode characters and 150 target overlap. Review a representative corpus and retrieval
   results before claiming these values are optimal.
-- [ ] **Broaden PDF extraction fixtures.** Layout mode fixes the inspected letter;
-  add synthetic positioned-word, column, and table examples to check reading order.
-  Do not commit personal PDFs. Compare parsers only when examples justify it.
+- [ ] **Broaden PDF extraction fixtures.** The selected golden pages favor
+  PyMuPDF `sort=False` for the inspected columns; add synthetic positioned-word,
+  column, and table examples to check reading order beyond those pages. Do not
+  commit personal PDFs.
 - [ ] **Record extraction provenance.** Decide how parser version/mode and future
   normalization changes are recorded alongside chunk configuration so reprocessing
   is explainable. Existing chunks are not automatically rebuilt after code changes.

@@ -46,7 +46,7 @@ This table includes planned retrieval, deployment, and CI components. See the
 | Production runtime | Docker Compose and Nginx | Single-VPS process isolation, HTTPS, and web-instance load balancing |
 | CI/CD | GitHub Actions | Lint, type checking, tests, build, and later deployment |
 
-Authentication uses Better Auth. PDF extraction uses pypdf in layout mode. Ingestion and query retrieval use `openai/text-embedding-3-small` through OpenRouter. Generation also calls OpenRouter through a server-only adapter with a configurable model. The production object-storage provider remains an implementation decision.
+Authentication uses Better Auth. PDF extraction uses PyMuPDF text output with `sort=False`. Ingestion and query retrieval use `openai/text-embedding-3-small` through OpenRouter. Generation also calls OpenRouter through a server-only adapter with a configurable model. The production object-storage provider remains an implementation decision.
 
 ## Repository structure
 
@@ -495,18 +495,17 @@ not the RabbitMQ container. Both clients declare the queue durability and routin
 
 ## PDF extraction implementation status
 
-`worker/src/ragnarok_ingestion/pdf_extraction.py` prepares a standalone pypdf
-extractor using layout mode, verified against synthetic PDF fixtures with pypdf 6.19.0. It accepts
-bytes and returns text with original one-based page numbers, skipping empty pages.
-Layout mode reconstructs lines from text positions; it may add spaces and does not
-guarantee reading order for columns or tables. Pages without content streams are
-skipped before extraction. Existing chunks are not rebuilt when extraction changes.
+`worker/src/ragnarok_ingestion/pdf_extraction.py` uses PyMuPDF
+`get_text("text", sort=False)`. It accepts bytes and returns text with original
+one-based page numbers, skipping pages without extracted text. The selected
+benchmark pages showed better reading order than `sort=True` for the two-column
+paper, but the text stream does not provide semantic roles or table cells.
+Existing chunks are not rebuilt when extraction changes.
 There is no default total page or extracted-character ceiling. Optional positive
 `PDF_MAX_PAGES` and `PDF_MAX_EXTRACTED_CHARACTERS` settings enforce operator policy;
 character counts apply before whitespace normalization. It rejects encrypted documents and documents
-without extractable text. Strict parsing intentionally rejects some recoverable
-PDF defects rather than silently repairing them. Known PDF read errors become safe
-document errors; unexpected exceptions still propagate.
+without extractable text. PDFs that MuPDF cannot open become safe document
+errors; unexpected exceptions still propagate.
 
 The ingestion service calls `pdf_processing.process_pdf(storage_key)`
 after authorizing and claiming the owned document revision. It starts one child
