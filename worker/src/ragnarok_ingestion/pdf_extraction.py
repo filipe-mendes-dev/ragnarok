@@ -1,10 +1,9 @@
 """Extract page text without storage, database, or queue access."""
 
 from dataclasses import dataclass
-from io import BytesIO
 
-from pypdf import PdfReader
-from pypdf.errors import PdfReadError
+import pymupdf
+
 
 @dataclass(frozen=True)
 class ExtractedPage:
@@ -35,19 +34,16 @@ def extract_pdf_pages(
     character_count = 0
 
     try:
-        with BytesIO(pdf_bytes) as stream:
-            reader = PdfReader(stream, strict=True)
-            if reader.is_encrypted:
+        with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
+            if document.needs_pass:
                 raise PdfExtractionError("Encrypted PDFs are not supported.")
-            if max_pages is not None and len(reader.pages) > max_pages:
+            if max_pages is not None and len(document) > max_pages:
                 raise PdfExtractionError(
-                    f"PDF has {len(reader.pages):,} pages; the configured limit is {max_pages:,} pages."
+                    f"PDF has {len(document):,} pages; the configured limit is {max_pages:,} pages."
                 )
 
-            for page_number, page in enumerate(reader.pages, start=1):
-                if page.get_contents() is None:
-                    continue
-                text = page.extract_text(extraction_mode="layout")
+            for page_number, page in enumerate(document, start=1):
+                text = page.get_text("text", sort=False)
                 character_count += len(text)
                 if max_characters is not None and character_count > max_characters:
                     raise PdfExtractionError(
@@ -58,7 +54,7 @@ def extract_pdf_pages(
                 text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
                 if text:
                     pages.append(ExtractedPage(page_number=page_number, text=text))
-    except PdfReadError:
+    except pymupdf.FileDataError:
         raise PdfExtractionError("PDF could not be read.") from None
 
     if not pages:
