@@ -54,7 +54,7 @@ name while recording the requested OpenRouter slug. Both record
 embedding service runs in the application.
 
 The Python chunker uses 1,000 Unicode characters per chunk with a 150-character
-target overlap. These limits are configured in `worker/src/ragnarok_ingestion/embedding.py`.
+target overlap. These limits are configured in `apps/ingestion-worker/src/ragnarok_ingestion/embedding.py`.
 The larger model input limit does not change the citation
 or generation context budgets. Requests have bounded timeouts and provider errors
 produce safe failures. `OPENROUTER_EMBEDDINGS_URL` is available for local test
@@ -87,14 +87,14 @@ candidate snapshots.
 
 ## Regression benchmark
 
-`tests/evaluation/retrieval-corpus.ts` defines eight synthetic documents, sixteen
+`apps/web/tests/evaluation/retrieval-corpus.ts` defines eight synthetic documents, sixteen
 fixed passages, twelve answerable questions, and one unsupported question. It
 contains no private data. The opt-in benchmark measures source ranking with the
 current OpenRouter embedding model and PostgreSQL retrieval, using fixed passage boundaries. It does not
 evaluate the ingestion chunker, arbitrary PDFs, domain adaptation, or generation.
 Annotations refer to stable source keys, not generated chunk UUIDs.
 
-From the repository root, with Docker and `OPENROUTER_API_KEY` configured:
+From `apps/web/`, with Docker and `OPENROUTER_API_KEY` configured:
 
 ```bash
 RUN_LIVE_EMBEDDING_EVALUATION=1 \

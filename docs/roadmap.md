@@ -14,7 +14,7 @@ status here and record new agreed follow-ups there.
 Target: Day 1
 
 - [x] Initialize Git with `main` as the default branch.
-- [x] Scaffold Next.js App Router with strict TypeScript, npm, Tailwind, ESLint, and `src/`.
+- [x] Scaffold Next.js App Router with strict TypeScript, npm, Tailwind, ESLint, and `apps/web/src/`.
 - [x] Add canonical `lint`, `typecheck`, `test`, `check`, and `build` scripts.
 - [x] Add semantic CSS variables and mobile-first base styles.
 - [x] Add Vitest; defer Playwright configuration until the first user flow exists.
@@ -84,7 +84,7 @@ Work through the following steps in order. RabbitMQ replaces the original BullMQ
 
 - [x] Define and unit-test a minimal versioned ingestion message input in `ingestion-input.ts`.
 - [x] Establish a baseline of 1,000 Unicode code points and 150 target overlap; sample PDF chunks reviewed. Retrieval-based tuning remains in the backlog.
-- [x] Generate and inspect `worker/uv.lock` with uv; confirm the installed LangChain splitter version.
+- [x] Generate and inspect `apps/ingestion-worker/uv.lock` with uv; confirm the installed LangChain splitter version.
 - [x] Verify the Python LangChain chunker, sample, and 10 unittest tests against installed dependencies.
 - [x] Install pytest and verify the existing suite under the configured runner.
 - [x] Add the chunk/configuration schema and generated migration; verify constraints against a fresh Testcontainers database.

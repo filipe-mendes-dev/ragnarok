@@ -3,7 +3,7 @@
 ## Document status
 
 - Status: Accepted for V1 implementation
-- Last updated: 2026-09-27
+- Last updated: 2026-09-29
 - Related product definition: `docs/product-requirements.md`
 
 ## Architectural summary
@@ -15,7 +15,7 @@ RAGnarok V1 has a TypeScript web application and a Python ingestion worker in on
 
 Next.js and the worker request embeddings directly from OpenRouter. There is no internal Python HTTP API.
 
-The web application owns TypeScript services under `src/server`. The worker owns Python ingestion services under `worker/src/ragnarok_ingestion`. They share a versioned JSON message contract and the PostgreSQL schema, not executable modules. Drizzle remains the sole migration owner; Python repositories query that schema without a second migration system. PostgreSQL is the durable system of record. RabbitMQ coordinates background jobs. Original PDFs live in S3-compatible object storage.
+The web application owns TypeScript services under `apps/web/src/server`. The worker owns Python ingestion services under `apps/ingestion-worker/src/ragnarok_ingestion`. They share a versioned JSON message contract and the PostgreSQL schema, not executable modules. Drizzle remains the sole migration owner; Python repositories query that schema without a second migration system. PostgreSQL is the durable system of record. RabbitMQ coordinates background jobs. Original PDFs live in S3-compatible object storage.
 
 Next.js remains the browser-facing backend. The Python worker remains useful for asynchronous PDF extraction, chunking, and ingestion. A separate Python HTTP API is unnecessary while both runtimes can call OpenRouter directly.
 
@@ -54,60 +54,31 @@ Directories are created only when the first real file for that responsibility ex
 
 ```text
 ragnarok/
-├── src/
-│   ├── app/                       # Next.js route and rendering boundary
-│   │   ├── (public)/
-│   │   ├── (authenticated)/
-│   │   │   ├── documents/
-│   │   │   ├── chat/
-│   │   │   └── traces/
-│   │   └── api/
-│   ├── features/                  # Product-facing React components
-│   │   ├── documents/
-│   │   ├── chat/
-│   │   └── traces/
-│   ├── server/                    # Trusted Node.js modules
-│   │   ├── auth/
-│   │   ├── db/
-│   │   │   ├── client.ts
-│   │   │   └── schema/           # Drizzle tables grouped by capability
-│   │   ├── modules/               # Business capabilities
-│   │   │   ├── documents/
-│   │   │   ├── ingestion/
-│   │   │   └── rag/
-│   │   ├── queue/
-│   │   ├── storage/
-│   │   └── observability/
-│   └── shared/                    # Environment-neutral TypeScript contracts
-├── worker/
-│   ├── pyproject.toml             # Python dependencies
-│   ├── src/ragnarok_ingestion/    # Python ingestion, repositories, and consumer
-│   └── tests/unit/                # Python unit tests; integration tests live alongside them
-├── drizzle/                       # Committed SQL migrations
-├── tests/
-│   ├── integration/
-│   └── fixtures/
-├── e2e/
+├── apps/
+│   ├── web/
+│   │   ├── src/                   # Next.js routes, features, server, shared code
+│   │   ├── tests/                 # TypeScript unit, integration, and evaluation tests
+│   │   ├── drizzle/               # Committed Drizzle migrations
+│   │   ├── drizzle.config.ts
+│   │   ├── package.json
+│   │   └── package-lock.json
+│   └── ingestion-worker/
+│       ├── src/ragnarok_ingestion/
+│       ├── tests/                 # Python unit and integration tests
+│       ├── pyproject.toml
+│       └── uv.lock
 ├── docs/
-│   ├── product-requirements.md
-│   ├── architecture.md
-│   └── decisions/                 # Added only for decisions needing their own history
-├── infra/
-│   └── nginx/
-├── public/
-├── .github/
-│   └── workflows/
-├── compose.dev.yml
-├── compose.prod.yml
-├── Dockerfile
-├── drizzle.config.ts
-├── package-lock.json
-└── package.json
+├── compose.dev.yml               # Infrastructure shared by both applications
+├── .env.example                   # Local Compose variables
+└── README.md
 ```
+
+Each application has its own dependency lockfile, commands, tests, and local
+environment example. No npm workspace or `packages/` directory exists yet.
 
 ## Module responsibilities
 
-### `src/app`
+### `apps/web/src/app`
 
 Owns Next.js-specific concerns:
 
@@ -119,11 +90,11 @@ Owns Next.js-specific concerns:
 
 Pages and route handlers remain thin. They authenticate, parse input, call an application service, and translate its result or typed error into UI or HTTP output.
 
-### `src/features`
+### `apps/web/src/features`
 
 Owns product-facing React components grouped by user capability. Client Components are introduced only around interactive UI. Tailwind classes live with these components and consume semantic CSS variables where appropriate.
 
-### `src/server`
+### `apps/web/src/server`
 
 Owns trusted Node.js behavior:
 
@@ -134,11 +105,11 @@ Owns trusted Node.js behavior:
 - Retrieval, context construction, generation, and citation validation
 - Structured trace and logging behavior
 
-The directory name is a human convention, not a bundler rule. Next-specific modules that must never enter a Client Component graph use `import "server-only"`. The Python worker does not import TypeScript modules. Framework-independent TypeScript modules can omit that marker when needed by tests; `server-only` relies on the React server export condition supplied by the Next.js compiler. Directory import rules and dependency checks protect the complete `src/server` boundary.
+The directory name is a human convention, not a bundler rule. Next-specific modules that must never enter a Client Component graph use `import "server-only"`. The Python worker does not import TypeScript modules. Framework-independent TypeScript modules can omit that marker when needed by tests; `server-only` relies on the React server export condition supplied by the Next.js compiler. Dedicated directory import checks have not been added yet.
 
-`src/server/modules` groups business capabilities such as documents, ingestion, and RAG. Infrastructure integrations such as the database client, queue, and object storage remain outside that directory. A module may use several infrastructure adapters, and a database table does not automatically require its own module or service.
+`apps/web/src/server/modules` groups business capabilities such as documents, ingestion, and RAG. Infrastructure integrations such as the database client, queue, and object storage remain outside that directory. A module may use several infrastructure adapters, and a database table does not automatically require its own module or service.
 
-### `src/shared`
+### `apps/web/src/shared`
 
 Contains code that is safe in both browser and server dependency graphs:
 
@@ -149,7 +120,7 @@ Contains code that is safe in both browser and server dependency graphs:
 
 It does not import database clients, Node-only APIs, secrets, RabbitMQ, or provider clients.
 
-### `worker/src/ragnarok_ingestion`
+### `apps/ingestion-worker/src/ragnarok_ingestion`
 
 Contains Python ingestion behavior. The entry point configures logging, loads the OpenRouter embedding adapter, and starts the RabbitMQ consumer. The consumer validates messages and delegates to the ingestion service, which owns repository calls and transactions. PDF download and extraction run in one bounded child process. The parent chunks page text by character count and requests embeddings from OpenRouter before persistence.
 
@@ -170,10 +141,9 @@ Enforcement:
 2. Client Components use `"use client"` only at the smallest interactive boundary.
 3. Client modules never import from `@/server`.
 4. Shared modules never re-export server modules.
-5. ESLint import restrictions reinforce the dependency rule.
-6. A dependency check verifies that client entry points cannot reach `src/server`.
-7. CI contains a Next.js build check; a deliberate `server-only` boundary test is performed during setup.
-8. Secrets use server-only environment variables and are never passed to Client Components.
+5. A production Next.js build checks the client/server boundary; dedicated import
+   restrictions and CI checks remain future work.
+6. Secrets use server-only environment variables and are never passed to Client Components.
 
 `"use server"` is reserved for Server Functions. It is not used as a general replacement for `server-only`.
 
@@ -273,11 +243,11 @@ Implement in small steps:
 
 Start with paragraph-aware splitting and a maximum size. Chunks can have different sizes. The initial Python chunker uses 1,000 Unicode code points and a target overlap of 150, both adjustable. Sample chunks have been reviewed; these remain trial values pending retrieval evaluation. Chunks carry ordinal, text, and optional PDF page number; persistence records the source revision and chunk configuration. Store one active chunk set per document, including source revision, order, text, source location where available, and enough method/version/settings metadata to identify how it was produced. Later customization can change settings or replace the method; simultaneous chunk sets are deferred.
 
-The Python chunker uses the pinned `langchain-text-splitters` package and its `RecursiveCharacterTextSplitter`. This local operation needs no provider credentials. Ordinary functions remain suitable for this fixed ingestion workflow. LangGraph and agents are outside V1. After ordinary RAG works, a separate learning exercise can introduce tool calling, then conditional workflows and persisted execution. Python is an explicit learning choice for this milestone. It adds dependency management, message-contract validation in both languages, and separate persistence code. It does not add a Python HTTP API. See `worker/README.md` for setup and current limitations.
+The Python chunker uses the pinned `langchain-text-splitters` package and its `RecursiveCharacterTextSplitter`. This local operation needs no provider credentials. Ordinary functions remain suitable for this fixed ingestion workflow. LangGraph and agents are outside V1. After ordinary RAG works, a separate learning exercise can introduce tool calling, then conditional workflows and persisted execution. Python is an explicit learning choice for this milestone. It adds dependency management, message-contract validation in both languages, and separate persistence code. It does not add a Python HTTP API. See `apps/ingestion-worker/README.md` for setup and current limitations.
 
 ## Chunk persistence
 
-The Phase 4 schema definitions are `src/server/db/schema/document-chunks.ts` and `src/server/db/schema/chunk-configs.ts`.
+The Phase 4 schema definitions are `apps/web/src/server/db/schema/document-chunks.ts` and `apps/web/src/server/db/schema/chunk-configs.ts`.
 Migration `0004_high_sentry.sql` was generated and verified against fresh Testcontainers PostgreSQL; all 18 schema tests pass.
 
 Each `document_chunk` row stores:
@@ -397,23 +367,13 @@ Framework-independent services and repositories make future extraction possible 
 
 A separate API becomes justified if RAGnarok gains an independent mobile client, third-party API consumers, separate deployment/scaling requirements, or team ownership requiring an explicit service boundary.
 
-Possible future monorepo:
-
-```text
-apps/
-  web/                 # Next.js
-  api/                 # Prefer Fastify or FastAPI based on the actual requirement
-  worker/
-packages/
-  contracts/           # Versioned request/response schemas
-  database/            # Only if API and worker genuinely share persistence code
-```
-
-- Fastify fits a function-oriented TypeScript API with a relatively small framework surface.
-- NestJS fits a larger team that benefits from class-based modules, decorators, and dependency injection.
-- FastAPI fits when meaningful Python-only retrieval, ML, or data-processing libraries justify a Python runtime.
-
-Technology migration is not itself a goal. A future framework must solve a demonstrated runtime, ownership, client, or ecosystem problem.
+The repository already separates the web and ingestion worker under `apps/`.
+Add the browser extension there when its first runnable implementation exists.
+The extension will need explicit web HTTP routes and an authentication/origin
+policy; moving directories does not supply those contracts. Keep `packages/`
+absent until two TypeScript applications genuinely share code that merits a
+separate package. npm workspaces can be considered once there is a second npm
+application. A separate API service requires its own runtime or deployment need.
 
 ## Current ingestion sequence
 
@@ -487,7 +447,7 @@ publishing; unrelated reads do not require them. Services supply only the job.
 
 Queue names are required deployment configuration: `INGESTION_QUEUE_NAME` and
 `INGESTION_REJECTED_QUEUE_NAME`. Both runtimes reject missing, blank, or identical
-names. Local Next.js and the uv worker load the root `.env`; production deployment
+names. Local Next.js and the uv worker load their application `.env` files; production deployment
 must supply matching values to both processes, including when hosted separately.
 No cross-runtime file import or fallback queue names are used. Existing development
 Compose runs infrastructure only, so these variables belong to the host applications,
@@ -495,7 +455,7 @@ not the RabbitMQ container. Both clients declare the queue durability and routin
 
 ## PDF extraction implementation status
 
-`worker/src/ragnarok_ingestion/pdf_extraction.py` uses PyMuPDF
+`apps/ingestion-worker/src/ragnarok_ingestion/pdf_extraction.py` uses PyMuPDF
 `get_text("text", sort=False)`. It accepts bytes and returns text with original
 one-based page numbers, skipping pages without extracted text. The selected
 benchmark pages showed better reading order than `sort=True` for the two-column

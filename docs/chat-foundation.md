@@ -68,6 +68,6 @@ the adapter deletes the current key, not every historical version.
 ## Database rollout
 
 Migration `0006_awesome_nighthawk.sql` is Drizzle-generated. Apply it with
-`npm run db:migrate` before running the updated application. Integration tests apply
+`npm run db:migrate` from `apps/web/` before running the updated application. Integration tests apply
 all migrations to a fresh disposable PostgreSQL/pgvector database. The migration was also applied to the configured localhost database after this
 verification; browser test data remained in a separate disposable database.
