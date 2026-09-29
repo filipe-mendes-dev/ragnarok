@@ -1,9 +1,7 @@
 from pathlib import Path
-from io import BytesIO
 
+import pymupdf
 import pytest
-from pypdf import PdfReader, PdfWriter
-from pypdf.generic import DecodedStreamObject
 
 from ragnarok_ingestion.pdf_extraction import (
     ExtractedPage, PdfExtractionError, extract_pdf_pages,
@@ -36,18 +34,12 @@ def test_rejects_malformed_bytes() -> None:
 
 
 def test_default_accepts_more_than_old_page_and_character_limits() -> None:
-    reader = PdfReader(PDF_FIXTURES / "three-pages.pdf")
-    original = reader.pages[0].get_contents()
-    assert original is not None
-    writer = PdfWriter()
-    for _ in range(101):
-        page = writer.add_page(reader.pages[0])
-        contents = DecodedStreamObject()
-        contents.set_data(original.get_data() * 60)
-        page.replace_contents(contents)
-    with BytesIO() as output:
-        writer.write(output)
-        pages = extract_pdf_pages(output.getvalue())
+    with pymupdf.open() as document:
+        for _ in range(101):
+            page = document.new_page()
+            for line in range(60):
+                page.insert_text((72, 72 + line * 11), "Alpha beta gamma delta", fontsize=9)
+        pages = extract_pdf_pages(document.tobytes())
     assert len(pages) == 101
     assert sum(len(page.text) for page in pages) > 100_000
 

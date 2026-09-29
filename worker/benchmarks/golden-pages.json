@@ -1,0 +1,143 @@
+{
+  "status": "Initial gold annotations; review against rendered PDFs before using them as a pass gate.",
+  "scope": "Selected expectations transcribed from rendered PDF pages; not complete page transcripts or a document schema.",
+  "page_numbering": "pdf_page is one-based; printed page numbers are recorded separately.",
+  "cases": [
+    {
+      "id": "paper-columns-page-2",
+      "pdf": "corpus/full/1504.02490.pdf",
+      "pdf_page": 2,
+      "expected_body_order": [
+        "propose to use only Twitter for collecting out-of-domain data",
+        "We have several reasons to prefer searching Twitter",
+        "In the remainder of the paper",
+        "method for prioritizing the crawling queue",
+        "II. RELATED WORK",
+        "This work brings together two strategies for improving language models"
+      ],
+      "expected_elements": [
+        { "role": "page_number", "text": "2" },
+        { "role": "heading", "text": "II. RELATED WORK" }
+      ],
+      "expected_reconstructed_phrases": ["semi-structured format"],
+      "review_notes": [
+        "Read the left column before the right column; do not combine lines at the same height across columns.",
+        "The first body paragraph continues from PDF page 1.",
+        "The paragraph ending the left column continues at the top of the right column, before the heading."
+      ]
+    },
+    {
+      "id": "paper-tables-page-5",
+      "pdf": "corpus/full/1504.02490.pdf",
+      "pdf_page": 5,
+      "expected_body_order": [
+        "information between adjacent tokens in the data",
+        "IV. EXPERIMENTS",
+        "A. Experimental Data",
+        "The in-domain data used in the experiments in this paper",
+        "exclusively focused on the so-called limited language pack",
+        "TABLE I",
+        "B. N-gram Language Models",
+        "TABLE II"
+      ],
+      "expected_elements": [
+        { "role": "page_number", "text": "5" },
+        { "role": "heading", "text": "IV. EXPERIMENTS" },
+        { "role": "heading", "text": "A. Experimental Data" },
+        { "role": "heading", "text": "B. N-gram Language Models" },
+        { "role": "table_caption", "text": "TABLE I LANGUAGE VOCABULARY SIZE" },
+        { "role": "table_caption", "text": "TABLE II TWITTER DATA COLLECTION EXPERIMENT RESULTS" },
+        { "role": "footnote", "text": "http://www.iarpa.gov/index.php/research-programs/babel" }
+      ],
+      "tables": [
+        {
+          "caption": "TABLE I LANGUAGE VOCABULARY SIZE",
+          "columns": ["Language", "Types", "Tokens"],
+          "rows": [
+            ["Bengali", "7,932", "72,614"],
+            ["Tamil", "14,264", "70,258"],
+            ["Turkish", "10,069", "67,362"],
+            ["Zulu", "13,628", "58,027"]
+          ]
+        },
+        {
+          "caption": "TABLE II TWITTER DATA COLLECTION EXPERIMENT RESULTS",
+          "columns": ["Lang.", "Users", "Lines", "Δ PPL", "Weight"],
+          "rows": [
+            ["Bengali", "12k", "7.7M", "12.5%", ".21"],
+            ["Tamil", "13k", "4.7M", "7.5%", ".18"],
+            ["Turkish", "7k", "13.6M", "13.6%", ".27"],
+            ["Zulu", "3k", "5.2M", "5.1%", ".11"]
+          ]
+        }
+      ],
+      "review_notes": [
+        "The top-left text continues a paragraph from PDF page 4.",
+        "The paragraph under A. Experimental Data continues from the bottom of the left column to the top of the right column.",
+        "Keep each caption separate from its table and preserve row-to-column relationships.",
+        "The numbered URL note is a footnote, not part of the main paragraph."
+      ]
+    },
+    {
+      "id": "constitution-hierarchy-page-5",
+      "pdf": "corpus/full/botswana-constitution.pdf",
+      "pdf_page": 5,
+      "expected_body_order": [
+        "The Republic (ss 1-2)",
+        "1. Declaration of Republic",
+        "2. Public Seal",
+        "CHAPTER II",
+        "Protection of Fundamental Rights and Freedoms of the Individual (ss 3-19)",
+        "3. Fundamental rights and freedoms of the individual",
+        "4. Protection of right to life",
+        "5. Protection of right to personal liberty"
+      ],
+      "expected_elements": [
+        { "role": "heading", "text": "The Republic (ss 1-2)" },
+        { "role": "heading", "text": "CHAPTER II" },
+        { "role": "heading", "text": "Protection of Fundamental Rights and Freedoms of the Individual (ss 3-19)" },
+        { "role": "section_heading", "text": "3. Fundamental rights and freedoms of the individual" },
+        { "role": "section_heading", "text": "4. Protection of right to life" },
+        { "role": "section_heading", "text": "5. Protection of right to personal liberty" },
+        { "role": "page_footer", "text": "Copyright Government of Botswana" }
+      ],
+      "review_notes": [
+        "Keep section numbers with their titles, but separate each title from its body paragraphs.",
+        "Section 3 has lettered clauses (a) through (c); section 4 has clauses (a) through (d). Preserve their order and nesting.",
+        "The copyright line repeats across pages and must not become a section heading or body paragraph."
+      ]
+    },
+    {
+      "id": "hockey-numbered-lists-page-4",
+      "pdf": "corpus/full/2025-HP-Regras_Jogo_Regulamento_Tecnico.pdf",
+      "pdf_page": 4,
+      "expected_body_order": [
+        "CAPÍTULO I – SOBRE O JOGO",
+        "ARTIGO 1 (O jogo de hóquei em patins)",
+        "O jogo de hóquei em patins é praticado sobre uma pista retangular",
+        "Um (1) ou dois (2) Árbitros Principais",
+        "ARTIGO 2 (Equipas)",
+        "Uma equipa é composta por dez (10) jogadores",
+        "Dos dez (10) jogadores, dois (2) são, obrigatoriamente, guarda-redes",
+        "Em condições normais na pista de jogo",
+        "Um jogo de hóquei em patins só pode ser iniciado"
+      ],
+      "expected_elements": [
+        { "role": "heading", "text": "CAPÍTULO I – SOBRE O JOGO" },
+        { "role": "section_heading", "text": "ARTIGO 1 (O jogo de hóquei em patins)" },
+        { "role": "section_heading", "text": "ARTIGO 2 (Equipas)" },
+        { "role": "page_number", "text": "3" },
+        { "role": "page_footer", "text": "COMISSÃO TÉCNICA DE HÓQUEI EM PATINS | REGULAMENTOS OFICIAIS" }
+      ],
+      "expected_reconstructed_phrases": [
+        "O jogo de hóquei em patins é praticado sobre uma pista retangular, de superfície plana e lisa, sendo disputada entre duas equipas."
+      ],
+      "review_notes": [
+        "PDF page 4 displays printed page number 3; retain both concepts separately.",
+        "Article 1 contains numbered clauses 1 through 4. Article 2 starts a new numbering sequence.",
+        "Article 2 clause 1 contains lettered items a through g; clause 3 starts another lettered sequence.",
+        "The bottom logo, printed page number, and repeated organization line are page furniture, not article text."
+      ]
+    }
+  ]
+}

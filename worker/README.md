@@ -23,9 +23,10 @@ environment needs `DATABASE_URL`, `RABBITMQ_URL`, distinct
 Next.js.
 
 `uv` owns `uv.lock`; do not edit it manually. `aio-pika` handles RabbitMQ delivery,
-Pydantic validates untrusted messages and provider responses, `pypdf` extracts
-text, and `langchain-text-splitters` determines chunk boundaries. The worker no
-longer loads a local inference model or runs an HTTP server.
+Pydantic validates untrusted messages and provider responses, PyMuPDF extracts
+page text with `sort=False`, and `langchain-text-splitters` determines chunk
+boundaries. The worker no longer loads a local inference model or runs an HTTP
+server.
 
 ## Embedding settings
 
