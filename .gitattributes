@@ -1,1 +1,1 @@
-worker/tests/fixtures/pdf/*.pdf binary
+apps/ingestion-worker/tests/fixtures/pdf/*.pdf binary

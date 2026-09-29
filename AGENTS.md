@@ -15,9 +15,9 @@
 
 ## Architecture
 
-- Keep `src/app` thin: parse transport input, authenticate, call a service, and map the result.
-- Keep trusted Node.js behavior in `src/server`; client code must not import from it.
-- Keep `src/shared` environment-neutral. It must not import secrets, database clients, BullMQ, storage clients, or Node-only APIs.
+- Keep `apps/web/src/app` thin: parse transport input, authenticate, call a service, and map the result.
+- Keep trusted Node.js behavior in `apps/web/src/server`; client code must not import from it.
+- Keep `apps/web/src/shared` environment-neutral. It must not import secrets, database clients, BullMQ, storage clients, or Node-only APIs.
 - Services own workflows, business rules, typed domain errors, and multi-repository transactions.
 - Repositories own persistence queries and DB-facing shapes; they do not encode user workflows.
 - Keep retrieval and generation separate. Apply user authorization inside persistence and retrieval queries.
@@ -35,7 +35,7 @@
 ## Quality
 
 - Add dependencies only when they solve a current requirement.
-- Keep unit tests in `tests/unit` and integration tests in `tests/integration`, mirroring the relevant `src` path.
+- Keep each application's unit and integration tests under its own `tests/unit` and `tests/integration`, mirroring its `src` path.
 - Add focused tests for business rules, authorization boundaries, retrieval behavior, and failure handling.
 - Before finalizing implementation changes, run the relevant subset of `npm run check`, tests, and `npm run build`.
 - Never commit secrets, `.env` files, uploaded documents, database volumes, or private evaluation data.
@@ -45,7 +45,7 @@
 ### Database migrations
 
 - Never create or edit Drizzle-generated migration SQL or snapshot files by hand.
-- Change schema definitions under `src/server/db/schema`, then run `npm run db:generate`.
+- Change schema definitions under `apps/web/src/server/db/schema`, then run `npm run db:generate` from `apps/web`.
 - Review generated SQL for intended constraints, destructive operations, and unexpected schema changes before applying or committing it.
 - Do not inspect generated snapshot JSON unless migration generation or schema history requires debugging.
 - Add custom data-migration SQL only when required, call it out explicitly, and keep Drizzle metadata generator-owned.
@@ -73,7 +73,7 @@
 - Respond in English unless Portuguese is explicitly requested.
 - Report changes file by file with the reason and verification performed.
 - For both TypeScript and Python, briefly explain new implementation decisions and non-obvious logic. Justify each new dependency, abstraction, or mechanism; do not repeat explanations for familiar or unchanged behavior.
-- Before changing Python, read `worker/AGENTS.md`. Short explanations replace exhaustive line-by-line walkthroughs unless requested.
+- Before changing Python, read `apps/ingestion-worker/AGENTS.md`. Short explanations replace exhaustive line-by-line walkthroughs unless requested.
 
 ## Efficient development
 

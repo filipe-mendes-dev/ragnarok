@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/apps/web/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,13 +13,17 @@
 
 # testing
 /coverage
+/apps/web/coverage/
 
 # next.js
 /.next/
 /out/
+/apps/web/.next/
+/apps/web/out/
 
 # production
 /build
+/apps/web/build/
 
 # misc
 .DS_Store
@@ -47,7 +52,7 @@ next-env.d.ts
 *.py[cod]
 *.egg-info/
 **/.pytest_cache/
-/worker/models/
-/worker/benchmarks/runs/
-/worker/benchmarks/evaluation-results/
-/worker/benchmarks/corpus/full/*.pdf
+/apps/ingestion-worker/models/
+/apps/ingestion-worker/benchmarks/runs/
+/apps/ingestion-worker/benchmarks/evaluation-results/
+/apps/ingestion-worker/benchmarks/corpus/full/*.pdf
