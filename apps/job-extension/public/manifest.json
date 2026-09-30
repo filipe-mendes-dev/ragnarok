@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "RAGnarok Job Form Inspector",
+  "version": "0.1.0",
+  "description": "Inspect form fields on the current job application page.",
+  "action": {
+    "default_title": "Inspect job application fields",
+    "default_popup": "index.html"
+  },
+  "permissions": ["activeTab", "scripting"]
+}
