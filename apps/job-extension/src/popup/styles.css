@@ -1,0 +1,141 @@
+:root {
+    color-scheme: light dark;
+    font-family: system-ui, sans-serif;
+    font-size: 14px;
+    width: 360px;
+    min-width: 360px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    width: 100%;
+    max-height: 580px;
+    margin: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+main {
+    min-width: 0;
+    padding: 16px;
+}
+
+h1 {
+    margin: 0 0 8px;
+    font-size: 18px;
+}
+
+h2 {
+    margin: 18px 0 2px;
+    font-size: 16px;
+}
+
+h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+}
+
+p {
+    line-height: 1.4;
+}
+
+.intro,
+.origin {
+    color: GrayText;
+}
+
+button {
+    min-height: 36px;
+    padding: 6px 12px;
+    border: 1px solid ButtonBorder;
+    border-radius: 6px;
+    background: ButtonFace;
+    color: ButtonText;
+    font: inherit;
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+button:focus-visible,
+summary:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+}
+
+.notice {
+    font-weight: 600;
+}
+
+.label-hint {
+    margin: -4px 0 10px;
+    color: GrayText;
+    font-size: 12px;
+}
+
+.field-list,
+.action-list {
+    display: grid;
+    gap: 10px;
+    padding: 0;
+    list-style: none;
+}
+
+.field-card,
+.action-card {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid GrayText;
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+}
+
+.action-card {
+    display: grid;
+    gap: 4px;
+}
+
+.action-card span {
+    color: GrayText;
+}
+
+dl {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 5px 8px;
+    margin: 0;
+}
+
+dt {
+    color: GrayText;
+}
+
+dd {
+    min-width: 0;
+    margin: 0;
+}
+
+details {
+    margin-top: 10px;
+}
+
+summary {
+    cursor: pointer;
+}
+
+details ol {
+    padding-left: 20px;
+}
+
+pre {
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
