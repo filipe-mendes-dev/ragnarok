@@ -367,13 +367,18 @@ Framework-independent services and repositories make future extraction possible 
 
 A separate API becomes justified if RAGnarok gains an independent mobile client, third-party API consumers, separate deployment/scaling requirements, or team ownership requiring an explicit service boundary.
 
-The repository already separates the web and ingestion worker under `apps/`.
-Add the browser extension there when its first runnable implementation exists.
-The extension will need explicit web HTTP routes and an authentication/origin
+The repository separates the web app, ingestion worker, and job extension under
+`apps/`. The Chrome Manifest V3 extension currently scans the active page's visible
+form controls and actions on demand and displays a local-only result in a React popup.
+Its popup injects a bundled scanner file with `chrome.scripting.executeScript`;
+field detection, label resolution, and action detection are separate modules. V0 has
+no service worker, navigation automation, API calls, or authentication. When
+API-backed suggestions are added,
+the extension will need explicit web HTTP routes and an authentication/origin
 policy; moving directories does not supply those contracts. Keep `packages/`
-absent until two TypeScript applications genuinely share code that merits a
-separate package. npm workspaces can be considered once there is a second npm
-application. A separate API service requires its own runtime or deployment need.
+absent until the two TypeScript applications genuinely share code that merits a
+separate package. npm workspaces remain optional. A separate API service requires
+its own runtime or deployment need.
 
 ## Current ingestion sequence
 

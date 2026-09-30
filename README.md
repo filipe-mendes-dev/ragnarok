@@ -10,6 +10,9 @@ The web app and Python worker request embeddings from OpenRouter. Chat saves ret
 and generation details and links available citations. Production deployment and
 reliability hardening remain subsequent milestones.
 
+The separate `apps/job-extension` V0 inspects visible form fields and actions on the current
+page and shows them locally. It does not connect to the web app yet.
+
 ## Documentation
 
 - [Product requirements](docs/product-requirements.md): intended V1 behavior.
@@ -17,6 +20,7 @@ reliability hardening remain subsequent milestones.
 - [Roadmap](docs/roadmap.md): implementation sequence and phase status.
 - [Backlog](docs/todo.md): deferred work and completion conditions.
 - [Worker guide](apps/ingestion-worker/README.md): Python setup, message processing, tests, and troubleshooting.
+- [Job extension guide](apps/job-extension/README.md): build, load, and inspect forms in Chrome.
 
 ## Local development
 
