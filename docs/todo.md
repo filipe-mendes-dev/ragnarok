@@ -1,6 +1,6 @@
 # RAGnarok backlog
 
-Last updated: 2026-09-27
+Last updated: 2026-09-30
 
 Record deferred work here when it is agreed. The [roadmap](roadmap.md) owns phase
 order; this file owns the details of follow-ups. An unchecked item is unfinished,
@@ -106,6 +106,84 @@ deferred unless explicitly stated.
 - [ ] **Decide whether durable ingestion history is needed.** Current PostgreSQL
   state and console logs are not an attempt history. RabbitMQ removes acknowledged
   messages; its dashboard is not a completed-job audit trail.
+
+## Job extension: inspection and human-led workflow
+
+This work belongs to the separate `apps/job-extension` product path, not the web
+application's two-week V1 scope. The public [ElevenLabs Ashby posting](https://jobs.ashbyhq.com/elevenlabs/ada7cd2c-8b9f-4f19-a88b-7c2ca1be1fde)
+is the first concrete fixture: Overview and Application use different same-origin
+routes. The form has both an optional resume upload for autofill and a separate
+required Resume upload. The Overview exposes an "Apply for this Job" link to the
+form; the form exposes a separate "Submit Application" button.
+
+- [ ] **Build a representative inspection fixture set.** Capture sanitized DOM
+  structure and expected controls, labels, required states, actions, and job text
+  from this Ashby page and at least one other application site. Exclude applicant
+  values and files. Measure missed fields, wrong associations, and extra results
+  before expanding heuristics.
+- [ ] **Recognize upload controls and their triggers.** Associate a hidden file
+  input with a visible HTML label, button, or drop zone when the relationship is
+  supported by the DOM. Record `accept`, `multiple`, required status, and evidence
+  without reading selected files. Distinguish Ashby's autofill upload from its
+  required Resume field in the inspection result.
+- [ ] **Broaden the control inventory only where fixtures require it.** Check
+  editable regions, ARIA textboxes, custom selects, open shadow roots, and embedded
+  frames as separate cases. Classify hidden page-state inputs and unrelated page
+  controls so they do not become application questions. Verify coverage and false
+  positives for each new detector.
+- [ ] **Preserve field and requirement evidence.** Keep explicit labels, group
+  headings, descriptions, nearby text, and upload-trigger associations as distinct
+  candidates. Record whether "required" came from native/ARIA metadata, visible
+  text, or validation feedback. Show uncertain or conflicting matches for review;
+  do not promote nearby text to an explicit label.
+- [ ] **Map navigation and form actions.** Add semantic tabs, links, disclosure
+  controls, and upload triggers to the action inventory. Distinguish opening an
+  application from final submission. Treat `tabindex`, pointer styling, or inline
+  click attributes as weak clues; no DOM scan can enumerate all delegated event
+  handlers. Verify each suggested action against the resulting page state.
+- [ ] **Capture bounded job context.** From a visible Overview or description,
+  extract title, company, location, and headed description sections. Exclude
+  navigation, footer, repeated text, and applicant-entered values. Preserve the
+  source URL and capture time so the form step can use the earlier description.
+- [x] **Move the inspector UI to a side panel.** The toolbar icon opens the React
+  panel, which keeps the manual scan and displays the last result while open.
+- [ ] **Add multi-step panel state.** Keep the user in control of tab changes and
+  page actions while the panel shows job context, current step, field evidence,
+  and a rescan button. Store bounded per-tab snapshots temporarily so closing
+  the panel or changing routes cannot discard the description. Test same-origin
+  route changes and define behavior when `activeTab` access ends on another origin.
+- [ ] **Evaluate model fallback for unresolved labels.** Send a small, sanitized
+  DOM-derived neighborhood for only unresolved fields, batched by page, with stable
+  field IDs. Compare a small text model with a cropped image plus DOM evidence when
+  visual layout matters. Measure token use, latency, false associations, and
+  whether a stronger model improves the same fixtures. Reject unknown field IDs
+  and expose model suggestions as uncertain until reviewed.
+
+## Job extension: later answer and autonomous workflow
+
+- [ ] **Define the private application profile.** Store verified facts and
+  preferred CV versions with source provenance and an explicit selection policy.
+  Add authenticated API routes that return only the facts needed for a specific
+  application; keep provider credentials and private retrieval on the server.
+- [ ] **Draft answers with bounded model use.** Retrieve known facts first. Use
+  a small model only for question matching or minor wording changes, and evaluate
+  a stronger model for genuinely open-ended answers. When a cover-letter field is
+  present, always prepare a job-specific draft under the user's chosen policy.
+  Verify generated claims against profile evidence and keep job-posting text as
+  untrusted request context rather than a profile fact.
+- [ ] **Implement supervised filling before automatic submission.** Fill fields
+  confirmed required by the site, plus an available cover-letter field. Select the
+  preferred CV, handle newly revealed questions and validation errors, and show
+  the user the filled form before submission. Stop on unknown required status,
+  missing facts, or ambiguous controls. Test that rescan and retry do not duplicate
+  changes.
+- [ ] **Evaluate end-to-end autonomous applications.** Once the supervised path
+  passes multi-site fixtures, define a user-approved policy for which jobs may
+  receive automatic CV selection, navigation, filling, and final submission. Use
+  bounded state transitions with post-action checks; distinguish "Apply" from "Submit
+  Application", stop on uncertainty, detect completion, and prevent duplicate
+  submissions. Record an auditable summary of actions, answers, sources, cost, and
+  failures without persisting unnecessary page or applicant data.
 
 ## After V1 learning
 
