@@ -44,7 +44,8 @@ function ActionCard({ action }: { action: ApplicationAction }) {
 function ScanResult({ form }: { form: ApplicationForm }) {
   return (
     <section aria-label="Scan results">
-      <h2>{form.pageTitle || "Untitled page"}</h2>
+      <h2>Last scan</h2>
+      <h3>{form.pageTitle || "Untitled page"}</h3>
       <p className="origin">{form.pageOrigin}</p>
       <h2>Fields ({form.fields.length})</h2>
       {form.truncated && <p className="notice">Only the first 200 supported fields are shown.</p>}
@@ -75,9 +76,7 @@ export function App() {
       setStatus(`Found ${result.fields.length} fields and ${result.actions.length} actions${result.truncated || result.actionsTruncated ? " (more may be present)" : ""}.`);
     } catch (error: unknown) {
       console.error("Page scan failed", error);
-      setStatus(error instanceof Error && error.message === "No active page is available to scan."
-        ? error.message
-        : "Could not scan this page. Browser-protected pages cannot be scanned; otherwise, reload the page and try again.");
+      setStatus(error instanceof Error ? `Could not scan this page: ${error.message}` : "Could not scan this page.");
     } finally {
       setBusy(false);
     }
@@ -86,7 +85,7 @@ export function App() {
   return (
     <main>
       <h1>Job form inspector</h1>
-      <p className="intro">Inspect the fields and actions on the current page. Nothing is sent to RAGnarok.</p>
+      <p className="intro">Inspect the current page. Scan again after navigating or switching tabs. Nothing is sent to RAGnarok.</p>
       <button type="button" onClick={() => void handleScan()} disabled={busy}>Scan page</button>
       <p role="status" aria-live="polite">{status}</p>
       {form && <ScanResult form={form} />}
