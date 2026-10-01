@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { isApplicationForm } from "../../../src/shared/application-form";
 
 describe("isApplicationForm", () => {
-  it("rejects malformed data at the tab-to-popup boundary", () => {
+  it("rejects malformed data at the tab-to-panel boundary", () => {
     const validForm = { pageOrigin: "https://example.com", pageTitle: "Apply", fields: [], truncated: false, actions: [], actionsTruncated: false };
     expect(isApplicationForm(validForm)).toBe(true);
     expect(isApplicationForm({ pageOrigin: "https://example.com", pageTitle: "Apply", fields: [{ name: "email" }], truncated: false })).toBe(false);
