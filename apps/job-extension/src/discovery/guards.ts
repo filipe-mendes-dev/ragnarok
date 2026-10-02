@@ -1,9 +1,9 @@
-import type { ApplicationAction, ApplicationForm } from "../shared/application-form";
+import type { ApplicationAction, PageScan } from "../shared/page-scan";
 import { isEligibleNavigationAction, recognizeApplicationActionLabel } from "../shared/discovery-rules";
 import type { DiscoverySession } from "./session";
 
 interface SessionWithPageScan extends DiscoverySession {
-  scan: ApplicationForm;
+  scan: PageScan;
 }
 
 interface SessionWithSelectedAction extends DiscoverySession {
@@ -27,7 +27,7 @@ export function hasSelectedAction(session: DiscoverySession): session is Session
   return session.selectedAction !== null;
 }
 
-export function hasChangedOrigin(session: DiscoverySession, scan: ApplicationForm): boolean {
+export function hasChangedOrigin(session: DiscoverySession, scan: PageScan): boolean {
   if (!hasPageScan(session)) return false;
   return scan.pageOrigin !== session.scan.pageOrigin;
 }
@@ -42,7 +42,19 @@ export function hasFoundApplicationForm(session: DiscoverySession): boolean {
 
 export function isWaitingForManualSelection(session: DiscoverySession | null): session is PausedDiscoverySession {
   if (!session) return false;
-  return session.status === "paused";
+  if (session.status !== "paused") return false;
+  return session.pauseReason === "action";
+}
+
+export function isWaitingForContextDecision(session: DiscoverySession | null): session is PausedDiscoverySession {
+  if (!session) return false;
+  if (session.status !== "paused") return false;
+  return session.pauseReason === "context";
+}
+
+export function hasResolvedJobContext(session: DiscoverySession): boolean {
+  if (session.contextSkipped) return true;
+  return session.context !== null;
 }
 
 export function hasLearnablePreviousAction(session: DiscoverySession): session is SessionWithPreviousAction {

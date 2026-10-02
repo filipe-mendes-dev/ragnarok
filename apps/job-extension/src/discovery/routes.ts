@@ -1,9 +1,21 @@
 import { END } from "@langchain/langgraph/web";
-import { hasFoundApplicationForm, hasSelectedAction, isDiscoveryStopped } from "./guards";
+import { hasFoundApplicationForm, hasResolvedJobContext, hasSelectedAction, isDiscoveryStopped } from "./guards";
 import type { DiscoverySession } from "./session";
 
 interface DiscoveryRouteState {
   session: DiscoverySession;
+}
+
+export function routeAfterContextAcquisition({ session }: DiscoveryRouteState): typeof END | "scan" | "contextDecision" {
+  if (isDiscoveryStopped(session)) return END;
+  if (hasResolvedJobContext(session)) return "scan";
+  return "contextDecision";
+}
+
+export function routeAfterContextDecision({ session }: DiscoveryRouteState): typeof END | "scan" | "acquireContext" {
+  if (isDiscoveryStopped(session)) return END;
+  if (hasResolvedJobContext(session)) return "scan";
+  return "acquireContext";
 }
 
 export function routeAfterScan({ session }: DiscoveryRouteState): typeof END | "assess" {

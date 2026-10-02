@@ -1,20 +1,19 @@
-import type { ApplicationAction, ApplicationForm } from "../shared/application-form";
-import type { FormAssessment, LearnedAction } from "../shared/discovery-rules";
-
-export interface JobContext {
-  jobDescription: string;
-  sourceUrl: string;
-  lastPageUrl: string;
-  capturedAt: string;
-}
+import type { ApplicationAction, PageScan } from "../shared/page-scan";
+import type { FormAssessment } from "../shared/form-discovery";
+import type { LearnedAction } from "../shared/discovery-rules";
+import type { JobContext } from "../shared/job-context";
+export type { JobContext } from "../shared/job-context";
 
 export interface DiscoverySession {
   tabId: number;
   status: "running" | "paused" | "found" | "stopped";
   stage: string;
   message: string;
-  scan: ApplicationForm | null;
+  scan: PageScan | null;
   context: JobContext | null;
+  contextSkipped: boolean;
+  contextResponse: "retry" | "skip" | null;
+  pauseReason: "context" | "action" | null;
   assessment: FormAssessment | null;
   candidates: ApplicationAction[];
   selectedAction: ApplicationAction | null;
@@ -29,15 +28,36 @@ export interface DiscoverySession {
 }
 
 export interface DiscoveryPort {
-  scan(): Promise<ApplicationForm>;
-  click(scan: ApplicationForm, action: ApplicationAction): Promise<void>;
-  waitForChange(scan: ApplicationForm): Promise<void>;
+  readContext(): Promise<JobContext | null>;
+  scan(): Promise<PageScan>;
+  click(scan: PageScan, action: ApplicationAction): Promise<void>;
+  waitForChange(scan: PageScan): Promise<void>;
   saveContext(context: JobContext): Promise<void>;
+  clearContext(): Promise<void>;
   learnAction(action: LearnedAction): Promise<void>;
 }
 
-export function createDiscoverySession(tabId: number, learned: LearnedAction[] = [], context: JobContext | null = null): DiscoverySession {
-  return { tabId, status: "running", stage: "start", message: "Starting discovery.", scan: null, context,
-    assessment: null, candidates: [], selectedAction: null, selectionSource: null, manualResponse: null, clicks: 0,
-    visited: [], learned, previousOrigin: null, previousLabel: null, learnPrevious: false };
+export function createDiscoverySession(tabId: number, learned: LearnedAction[] = []): DiscoverySession {
+  return {
+    tabId,
+    status: "running",
+    stage: "start",
+    message: "Starting with job context acquisition.",
+    scan: null,
+    context: null,
+    contextSkipped: false,
+    contextResponse: null,
+    pauseReason: null,
+    assessment: null,
+    candidates: [],
+    selectedAction: null,
+    selectionSource: null,
+    manualResponse: null,
+    clicks: 0,
+    visited: [],
+    learned,
+    previousOrigin: null,
+    previousLabel: null,
+    learnPrevious: false,
+  };
 }
