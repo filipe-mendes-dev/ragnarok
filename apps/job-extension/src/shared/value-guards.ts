@@ -1,0 +1,16 @@
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object") return false;
+  if (value === null) return false;
+  if (Array.isArray(value)) return false;
+  return true;
+}
+
+export function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+export function isNonNegativeInteger(value: unknown): value is number {
+  if (typeof value !== "number") return false;
+  if (!Number.isInteger(value)) return false;
+  return value >= 0;
+}
