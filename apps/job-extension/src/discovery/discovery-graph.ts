@@ -6,14 +6,13 @@ import {
     StateGraph,
 } from '@langchain/langgraph/web';
 import {
-    assessApplicationForm,
     chooseApplicationAction,
-    hasUncertainFormEvidence,
     isEligibleNavigationAction,
     isScanIncomplete,
     normalizeExpression,
     pageFingerprint,
 } from '../shared/discovery-rules';
+import { assessApplicationForm, getMissingFormSignals } from '../shared/form-discovery';
 import {
     hasChangedOrigin,
     hasLearnablePreviousAction,
@@ -178,22 +177,22 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
                 'assess',
                 'The scan is incomplete. Review this page manually.',
             );
-        if (hasUncertainFormEvidence(assessment))
+        if (assessment.outcome === 'ambiguous')
             return stopped(
                 { ...session, assessment },
                 'assess',
-                'The form evidence is partial or multiple forms match. Review the page before continuing.',
+                'Multiple application form areas match. Review the page before continuing.',
             );
         if (session.clicks >= MAX_DISCOVERY_CLICKS)
             return stopped(
-                session,
+                { ...session, assessment },
                 'assess',
                 'Discovery reached its five-click limit.',
             );
         const fingerprint = pageFingerprint(session.scan);
         if (session.visited.includes(fingerprint))
             return stopped(
-                session,
+                { ...session, assessment },
                 'assess',
                 'Discovery returned to an already visited page state.',
             );
@@ -203,8 +202,9 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
                 assessment,
                 visited: [...session.visited, fingerprint],
                 stage: 'assess',
-                message:
-                    'No application form found. Looking for an application-opening action.',
+                message: assessment.outcome === 'partial'
+                    ? `Partial form area: missing ${getMissingFormSignals(assessment).join(', ')}. Looking for an application-opening action.`
+                    : 'No application form found. Looking for an application-opening action.',
             },
         };
     }
