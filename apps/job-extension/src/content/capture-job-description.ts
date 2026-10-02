@@ -1,39 +1,40 @@
+import { MAX_JOB_DESCRIPTION_LENGTH } from "../shared/job-context";
 import { isVisible } from "./dom";
 
-const MAX_DESCRIPTION_LENGTH = 20_000;
 const DESCRIPTION_SELECTOR = '[data-job-description], [itemprop="description"], #job-description, .job-description, .ashby-job-posting-description, [data-testid="job-description"]';
-const EXCLUDED = 'script, style, template, nav, header, footer, form, input, textarea, select, button, [role="navigation"], [role="textbox"], [role="combobox"], [contenteditable="true"]';
-const DESCRIPTION_HEADING = /^(?:job description|about (?:the|this) (?:role|job)|the role|overview|responsibilities)\s*$/i;
+const EXCLUDED_TEXT = 'script, style, template, nav, body > header, footer, input, textarea, select, button, [role="navigation"], [role="textbox"], [role="combobox"], [contenteditable]:not([contenteditable="false"])';
+const TEXT_BOUNDARY = "p, li, div, section, article, h1, h2, h3, h4, h5, h6, br";
 
-function isExcludedDescriptionNode(node: Node): boolean {
+function isExcludedTextNode(node: Node): boolean {
   if (!(node instanceof HTMLElement)) return false;
-  if (node.matches(EXCLUDED)) return true;
+  if (node.matches(EXCLUDED_TEXT)) return true;
   return !isVisible(node);
 }
 
-function isJobDescriptionHeading(heading: HTMLElement): boolean {
-  if (!isVisible(heading)) return false;
-  return DESCRIPTION_HEADING.test(heading.textContent?.trim() ?? "");
-}
-
 function readDescription(element: HTMLElement): string {
-  const parts: string[] = [];
-  let length = 0;
+  let text = "";
+
   function visit(node: Node): void {
-    if (length >= MAX_DESCRIPTION_LENGTH) return;
-    if (isExcludedDescriptionNode(node)) return;
+    if (text.length >= MAX_JOB_DESCRIPTION_LENGTH) return;
+    if (isExcludedTextNode(node)) return;
     if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent?.replace(/\s+/g, " ").trim();
-      if (!text) return;
-      const bounded = text.slice(0, MAX_DESCRIPTION_LENGTH - length);
-      parts.push(bounded);
-      length += bounded.length + 1;
+      text += (node.textContent ?? "").slice(0, MAX_JOB_DESCRIPTION_LENGTH - text.length);
       return;
     }
-    for (const child of node.childNodes) visit(child);
+    for (const child of node.childNodes) {
+      visit(child);
+      if (text.length >= MAX_JOB_DESCRIPTION_LENGTH) break;
+    }
+    if (node instanceof HTMLElement && node.matches(TEXT_BOUNDARY)) text += "\n";
   }
+
   visit(element);
-  return parts.join("\n").slice(0, MAX_DESCRIPTION_LENGTH);
+  return text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter((line) => line.length > 0)
+    .join("\n")
+    .slice(0, MAX_JOB_DESCRIPTION_LENGTH);
 }
 
 export function captureJobDescription(): string {
@@ -41,13 +42,7 @@ export function captureJobDescription(): string {
     const text = readDescription(element);
     if (text) return text;
   }
-  for (const heading of document.querySelectorAll<HTMLElement>("h1, h2, h3")) {
-    if (!isJobDescriptionHeading(heading)) continue;
-    const container = heading.parentElement;
-    if (!container) continue;
-    if (container.matches("body, html")) continue;
-    const text = readDescription(container);
-    if (text.length >= 40) return text;
-  }
-  return "";
+
+  const main = document.querySelector<HTMLElement>('main, article, [role="main"]') ?? document.body;
+  return readDescription(main);
 }

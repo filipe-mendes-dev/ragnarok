@@ -14,23 +14,25 @@ import {
     normalizeExpression,
     pageFingerprint,
 } from '../shared/discovery-rules';
-import type { ApplicationForm } from '../shared/application-form';
 import {
     hasChangedOrigin,
     hasLearnablePreviousAction,
     hasPageScan,
+    hasResolvedJobContext,
     hasRecognizedSelectedAction,
     hasSelectedAction,
 } from './guards';
 import {
     routeAfterActionSelection,
+    routeAfterContextAcquisition,
+    routeAfterContextDecision,
     routeAfterAssessment,
     routeAfterClick,
     routeAfterManualSelection,
     routeAfterPageWait,
     routeAfterScan,
 } from './routes';
-import type { DiscoveryPort, DiscoverySession, JobContext } from './session';
+import type { DiscoveryPort, DiscoverySession } from './session';
 
 export const MAX_DISCOVERY_CLICKS = 5;
 const DiscoveryState = Annotation.Root({
@@ -55,29 +57,79 @@ function errorMessage(error: unknown): string {
         : 'Unexpected browser operation failure.';
 }
 
-function resolveDiscoveryContext(
-    session: DiscoverySession,
-    scan: ApplicationForm,
-): JobContext | null {
-    // A stored description belongs to the saved page, not every job opened in this tab.
-    const canReuseContext =
-        hasPageScan(session) || session.context?.lastPageUrl === scan.pageUrl;
-    const context = canReuseContext ? session.context : null;
-    if (context?.jobDescription)
-        return { ...context, lastPageUrl: scan.pageUrl };
-    if (scan.jobDescription)
-        return {
-            jobDescription: scan.jobDescription,
-            sourceUrl: scan.pageUrl,
-            lastPageUrl: scan.pageUrl,
-            capturedAt: new Date().toISOString(),
-        };
-    if (context) return { ...context, lastPageUrl: scan.pageUrl };
-    return null;
-}
-
 export function createDiscoveryGraph(port: DiscoveryPort) {
+    async function acquireJobContext({ session }: GraphState): Promise<GraphState> {
+        try {
+            const context = await port.readContext();
+            if (!context) {
+                await port.clearContext();
+                return {
+                    session: {
+                        ...session,
+                        context: null,
+                        contextSkipped: false,
+                        contextResponse: null,
+                        pauseReason: 'context',
+                        status: 'paused',
+                        stage: 'context',
+                        message: 'No visible job text was found. Retry or continue without context.',
+                    },
+                };
+            }
+
+            await port.saveContext(context);
+
+            return {
+                session: {
+                    ...session,
+                    context,
+                    contextSkipped: false,
+                    contextResponse: null,
+                    pauseReason: null,
+                    status: 'running',
+                    stage: 'context',
+                    message: 'Captured job text. Continuing to application-form discovery.',
+                },
+            };
+        } catch (error: unknown) {
+            return stopped(session, 'context', errorMessage(error));
+        }
+    }
+
+    function contextDecision({ session }: GraphState): GraphState {
+        if (session.contextResponse === 'retry') {
+            return {
+                session: {
+                    ...session,
+                    status: 'running',
+                    pauseReason: null,
+                    contextSkipped: false,
+                    contextResponse: null,
+                    stage: 'context-decision',
+                    message: 'Retrying job context acquisition on the current page.',
+                },
+            };
+        }
+        if (session.contextResponse === 'skip') {
+            return {
+                session: {
+                    ...session,
+                    status: 'running',
+                    pauseReason: null,
+                    contextSkipped: true,
+                    contextResponse: null,
+                    context: null,
+                    stage: 'context-decision',
+                    message: 'Continuing without job context by explicit choice.',
+                },
+            };
+        }
+        return stopped(session, 'context-decision', 'Discovery cancelled.');
+    }
+
     async function scanPage({ session }: GraphState): Promise<GraphState> {
+        if (!hasResolvedJobContext(session))
+            return stopped(session, 'scan', 'Acquire job context or explicitly skip it before navigation.');
         try {
             const scan = await port.scan();
             if (hasChangedOrigin(session, scan))
@@ -86,7 +138,9 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
                     'scan',
                     'Navigation changed origin. Open the extension on the new page and start discovery there.',
                 );
-            const context = resolveDiscoveryContext(session, scan);
+            if (!hasPageScan(session) && session.context && session.context.lastPageUrl !== scan.pageUrl)
+                return stopped(session, 'scan', 'The page changed after context acquisition. Start discovery again on this page.');
+            const context = session.context ? { ...session.context, lastPageUrl: scan.pageUrl } : null;
             if (context) await port.saveContext(context);
             return {
                 session: {
@@ -178,6 +232,7 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
                 session: {
                     ...updated,
                     status: 'paused',
+                    pauseReason: 'action',
                     message: 'No unique keyword match. Choose an action to resume the graph.',
                 },
             };
@@ -185,6 +240,7 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
             session: {
                 ...updated,
                 status: 'running',
+                pauseReason: null,
                 message: `Selected '${choice.action.label}' using ${choice.source} matching.`,
             },
         };
@@ -220,6 +276,7 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
                 selectedAction: action,
                 selectionSource: 'manual',
                 status: 'running',
+                pauseReason: null,
                 stage: 'manual',
                 message: `Selected '${action.label}' manually.`,
             },
@@ -227,6 +284,8 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
     }
 
     async function clickAction({ session }: GraphState): Promise<GraphState> {
+        if (!hasResolvedJobContext(session))
+            return stopped(session, 'click', 'Job context has not been acquired or skipped.');
         if (!hasPageScan(session))
             return stopped(session, 'click', 'No eligible action selected.');
         if (!hasSelectedAction(session))
@@ -302,6 +361,8 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
 
     // Edges own orchestration. Nodes remain ordinary, independently testable functions.
     return new StateGraph(DiscoveryState)
+        .addNode('acquireContext', acquireJobContext)
+        .addNode('contextDecision', contextDecision)
         .addNode('scan', scanPage)
         .addNode('assess', assessForm)
         .addNode('choose', chooseAction)
@@ -309,7 +370,17 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
         .addNode('click', clickAction)
         .addNode('wait', waitForPage)
         .addNode('learn', recordSuccess)
-        .addEdge(START, 'scan')
+        .addEdge(START, 'acquireContext')
+        .addConditionalEdges(
+            'acquireContext',
+            routeAfterContextAcquisition,
+            [END, 'scan', 'contextDecision'],
+        )
+        .addConditionalEdges(
+            'contextDecision',
+            routeAfterContextDecision,
+            [END, 'scan', 'acquireContext'],
+        )
         .addConditionalEdges(
             'scan',
             routeAfterScan,
@@ -343,6 +414,6 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
         .addEdge('learn', END)
         .compile({
             checkpointer: new MemorySaver(),
-            interruptBefore: ['manual'],
+            interruptBefore: ['contextDecision', 'manual'],
         });
 }
