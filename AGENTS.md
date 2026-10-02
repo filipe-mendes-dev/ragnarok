@@ -6,6 +6,15 @@
 - Keep V1 within the agreed two-week scope. Do not add deferred technologies without a demonstrated requirement.
 - Do not modify unrelated behavior. Explain any necessary scope expansion before implementing it.
 
+## Incremental implementation
+
+- Start with the smallest working implementation of the current phase. Make its input, operation, output, and next step easy to follow before adding refinements.
+- Implement one observable phase at a time. Keep future phases and speculative edge cases out of the current increment.
+- Add edge-case handling after a concrete failure, example, or explicit requirement demonstrates the need. Preserve existing authorization, privacy, and navigation safeguards.
+- Keep related logic together in a small number of files. Several named functions in one file are preferable to a chain of files that hides the flow.
+- Introduce an interface, abstraction, dependency, or module only when it serves current behavior or a real boundary. Do not build scaffolding solely for a future LLM, fallback, or integration.
+- Explain the baseline and its actual limitations. Refine it gradually from observed results instead of implementing the complete planned architecture at once.
+
 ## TypeScript
 
 - Use strict TypeScript. Never use `any`; use `unknown` with narrowing or define an interface.
@@ -36,8 +45,9 @@
 
 - Add dependencies only when they solve a current requirement.
 - Keep each application's unit and integration tests under its own `tests/unit` and `tests/integration`, mirroring its `src` path.
-- Add focused tests for business rules, authorization boundaries, retrieval behavior, and failure handling.
-- Before finalizing implementation changes, run the relevant subset of `npm run check`, tests, and `npm run build`.
+- During iterative development, do not add, update, or run tests unless the user requests them. Leave existing tests untouched and defer test adaptation while the implementation is changing.
+- Verify iterative changes with application TypeScript checking and the relevant build. Avoid `npm run check` when it also runs tests that the user asked to defer.
+- When the user requests validation of a settled implementation, add or adapt focused tests for business rules, authorization boundaries, retrieval behavior, and failure handling.
 - Never commit secrets, `.env` files, uploaded documents, database volumes, or private evaluation data.
 - Use Conventional Commit prefixes. Do not commit unless explicitly requested.
 - No emoji in code comments.
@@ -79,6 +89,6 @@
 
 - Build simple, functional UI. Do not refine visual design or run extensive screenshot/viewport checks unless requested or needed to diagnose a concrete defect.
 - Read focused file sections, reuse context, and inspect diffs instead of repeatedly dumping full files. Keep tool output bounded and show only relevant failures or summaries.
-- Run affected tests and the relevant final checks once. Repeat only after meaningful changes, failures, or unresolved concerns; do not add redundant test layers.
+- Run the relevant application typecheck and build once. Run tests only when requested. Repeat checks only after meaningful changes, failures, or unresolved concerns.
 - Preserve authorization, persistence, failure-handling, and other correctness checks. Efficiency must not hide failures or skip required verification.
 - Keep progress updates and final reports concise. Explain decisions rather than narrating routine tool calls.
