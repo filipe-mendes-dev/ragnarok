@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { createDiscoveryGraph } from "../discovery/discovery-graph";
-import { isWaitingForManualSelection } from "../discovery/guards";
+import { isWaitingForContextDecision, isWaitingForManualSelection } from "../discovery/guards";
 import { createDiscoverySession, type DiscoverySession, type JobContext } from "../discovery/session";
-import type { ApplicationAction, ApplicationField, ApplicationForm } from "../shared/application-form";
-import { getActiveTabId, scanTab } from "./scan-active-tab";
+import type { ApplicationAction, ApplicationField, PageScan } from "../shared/page-scan";
+import { getActiveTabId, readJobContext, scanTab } from "./scan-active-tab";
 import { createBrowserDiscoveryPort } from "./browser-discovery-port";
-import { loadJobContext, loadLearnedActions, saveJobContext } from "./discovery-storage";
+import { clearJobContext, loadJobContext, loadLearnedActions, saveJobContext } from "./discovery-storage";
 import { DiscoveryPanel } from "./DiscoveryPanel";
 
 interface DiscoveryRun {
@@ -14,27 +14,13 @@ interface DiscoveryRun {
   controller: AbortController;
 }
 
-function resolveManualScanContext(scan: ApplicationForm, saved: JobContext | null): JobContext | null {
-  // An explicit scan refreshes the description; discovery retains its first captured description.
-  if (scan.jobDescription) {
-    return {
-      jobDescription: scan.jobDescription,
-      sourceUrl: scan.pageUrl,
-      lastPageUrl: scan.pageUrl,
-      capturedAt: new Date().toISOString(),
-    };
-  }
-  if (saved?.lastPageUrl === scan.pageUrl) return saved;
-  return null;
-}
-
 function appendDiscoveryTrace(entries: string[], session: DiscoverySession): string[] {
   const entry = `${session.stage}: ${session.message}`;
   if (entries[entries.length - 1] === entry) return entries;
   return [...entries, entry].slice(-50);
 }
 
-function getScanStatusMessage(scan: ApplicationForm): string {
+function getScanStatusMessage(scan: PageScan): string {
   const message = `Found ${scan.fields.length} fields and ${scan.actions.length} actions`;
   if (scan.truncated || scan.actionsTruncated) return `${message} (more may be present).`;
   return `${message}.`;
@@ -79,28 +65,28 @@ function ActionCard({ action }: { action: ApplicationAction }) {
   );
 }
 
-function ScanResult({ form }: { form: ApplicationForm }) {
+function ScanResult({ scan }: { scan: PageScan }) {
   return (
     <section aria-label="Scan results">
       <h2>Last scan</h2>
-      <h3>{form.pageTitle || "Untitled page"}</h3>
-      <p className="origin">{form.pageOrigin}</p>
-      <h2>Fields ({form.fields.length})</h2>
-      {form.truncated && <p className="notice">Only the first 200 supported fields are shown.</p>}
-      {form.fields.length > 0 ? <ol className="field-list">{form.fields.map((field) => <FieldCard key={field.index} field={field} />)}</ol> : <p>No supported fields found.</p>}
-      <h2>Actions ({form.actions.length})</h2>
-      {form.actionsTruncated && <p className="notice">Only the first 100 actions are shown.</p>}
-      {form.actions.length > 0 ? <ol className="action-list">{form.actions.map((action) => <ActionCard key={action.index} action={action} />)}</ol> : <p>No buttons or links found.</p>}
+      <h3>{scan.pageTitle || "Untitled page"}</h3>
+      <p className="origin">{scan.pageOrigin}</p>
+      <h2>Fields ({scan.fields.length})</h2>
+      {scan.truncated && <p className="notice">Only the first 200 supported fields are shown.</p>}
+      {scan.fields.length > 0 ? <ol className="field-list">{scan.fields.map((field) => <FieldCard key={field.index} field={field} />)}</ol> : <p>No supported fields found.</p>}
+      <h2>Actions ({scan.actions.length})</h2>
+      {scan.actionsTruncated && <p className="notice">Only the first 100 actions are shown.</p>}
+      {scan.actions.length > 0 ? <ol className="action-list">{scan.actions.map((action) => <ActionCard key={action.index} action={action} />)}</ol> : <p>No buttons or links found.</p>}
       <details className="raw-result">
         <summary>Structured JSON</summary>
-        <pre>{JSON.stringify(form, null, 2)}</pre>
+        <pre>{JSON.stringify(scan, null, 2)}</pre>
       </details>
     </section>
   );
 }
 
 export function App() {
-  const [form, setForm] = useState<ApplicationForm | null>(null);
+  const [scan, setScan] = useState<PageScan | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Open a job application page to begin.");
   const [session, setSession] = useState<DiscoverySession | null>(null);
@@ -130,17 +116,19 @@ export function App() {
     run.current?.controller.abort();
     run.current = null;
     setSession(null);
+    setContext(null);
     setTrace([]);
     setStatus("Scanning this page...");
     try {
       const tabId = await getActiveTabId();
+      const captured = await readJobContext(tabId);
       const result = await scanTab(tabId);
-      setForm(result);
-      const saved = await loadJobContext(tabId);
-      const captured = resolveManualScanContext(result, saved);
+      if (captured && result.pageUrl !== captured.sourceUrl) throw new Error("The page changed during inspection. Scan again.");
+      setScan(result);
       setContext(captured);
       if (captured) await saveJobContext(tabId, captured);
-      setStatus(getScanStatusMessage(result));
+      else await clearJobContext(tabId);
+      setStatus(`${getScanStatusMessage(result)} ${captured ? "Captured job text." : "No visible job text found."}`);
     } catch (error: unknown) {
       console.error("Page scan failed", error);
       setStatus(error instanceof Error ? `Could not scan this page: ${error.message}` : "Could not scan this page.");
@@ -157,7 +145,7 @@ export function App() {
       const current = value.session;
       setSession(current);
       setContext(current.context);
-      setForm(current.scan);
+      setScan(current.scan);
       setStatus(current.message);
       setTrace((entries) => appendDiscoveryTrace(entries, current));
     }
@@ -171,17 +159,17 @@ export function App() {
     setBusy(true);
     setTrace([]);
     setSession(null);
-    setForm(null);
+    setScan(null);
     setContext(null);
     setStatus("Starting application discovery...");
     try {
       const tabId = await getActiveTabId();
-      const [learned, saved, { createDiscoveryGraph }] = await Promise.all([loadLearnedActions(), loadJobContext(tabId), import("../discovery/discovery-graph")]);
+      const [learned, { createDiscoveryGraph }] = await Promise.all([loadLearnedActions(), import("../discovery/discovery-graph")]);
       if (!panelOpen.current) return;
       const controller = new AbortController();
       const activeRun: DiscoveryRun = { graph: createDiscoveryGraph(createBrowserDiscoveryPort(tabId, controller.signal)), threadId: crypto.randomUUID(), controller };
       run.current = activeRun;
-      await streamRun(activeRun, { session: createDiscoverySession(tabId, learned, saved) });
+      await streamRun(activeRun, { session: createDiscoverySession(tabId, learned) });
     } catch (error: unknown) {
       run.current = null;
       setSession((current) => current ? { ...current, status: "stopped" } : null);
@@ -208,6 +196,24 @@ export function App() {
     } finally { operationBusy.current = false; setBusy(false); }
   }
 
+  async function handleContextDecision(decision: "retry" | "skip" | null): Promise<void> {
+    const activeRun = run.current;
+    if (!activeRun) return;
+    if (operationBusy.current) return;
+    operationBusy.current = true;
+    setBusy(true);
+    try {
+      if (!isWaitingForContextDecision(session)) throw new Error("Discovery is not waiting for a context decision.");
+      const config = { configurable: { thread_id: activeRun.threadId } };
+      await activeRun.graph.updateState(config, { session: { ...session, contextResponse: decision } });
+      await streamRun(activeRun, null);
+    } catch (error: unknown) {
+      run.current = null;
+      setSession((current) => current ? { ...current, status: "stopped" } : null);
+      setStatus(error instanceof Error ? error.message : "Could not resume context acquisition.");
+    } finally { operationBusy.current = false; setBusy(false); }
+  }
+
   return (
     <main>
       <h1>Job form inspector</h1>
@@ -218,8 +224,9 @@ export function App() {
         {busy && run.current && <button type="button" onClick={() => run.current?.controller.abort()}>Stop discovery</button>}
       </div>
       <p role="status" aria-live="polite">{status}</p>
-      <DiscoveryPanel session={session} context={context} trace={trace} busy={busy} onSelect={(index) => void handleSelect(index)} />
-      {form && <ScanResult form={form} />}
+      <DiscoveryPanel session={session} context={context} trace={trace} busy={busy}
+        onSelect={(index) => void handleSelect(index)} onContextDecision={(decision) => void handleContextDecision(decision)} />
+      {scan && <ScanResult scan={scan} />}
     </main>
   );
 }

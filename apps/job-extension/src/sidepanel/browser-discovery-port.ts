@@ -1,9 +1,9 @@
-import { clickScannedAction } from "../content/click-scanned-action";
+import { clickScannedAction } from "../content/application/click-scanned-action";
 import type { DiscoveryPort, JobContext } from "../discovery/session";
-import type { ApplicationAction, ApplicationForm } from "../shared/application-form";
+import type { ApplicationAction, PageScan } from "../shared/page-scan";
 import { pageFingerprint } from "../shared/discovery-rules";
-import { saveJobContext, saveLearnedAction } from "./discovery-storage";
-import { assertActiveTab, scanTab } from "./scan-active-tab";
+import { clearJobContext, saveJobContext, saveLearnedAction } from "./discovery-storage";
+import { assertActiveTab, readJobContext, scanTab } from "./scan-active-tab";
 
 const WAIT_TIMEOUT_MS = 12_000;
 const POLL_INTERVAL_MS = 400;
@@ -24,7 +24,7 @@ function getClickFailureReason(result: unknown): string {
   return result.reason;
 }
 
-function isChangedPageReady(scan: ApplicationForm, previousFingerprint: string, fingerprint: string, stableSamples: number): boolean {
+function isChangedPageReady(scan: PageScan, previousFingerprint: string, fingerprint: string, stableSamples: number): boolean {
   if (fingerprint === previousFingerprint) return false;
   if (stableSamples < 3) return false;
   return scan.fields.length + scan.actions.length > 0;
@@ -46,7 +46,13 @@ function delay(signal: AbortSignal): Promise<void> {
 }
 
 export function createBrowserDiscoveryPort(tabId: number, signal: AbortSignal): DiscoveryPort {
-  async function scan(): Promise<ApplicationForm> {
+  async function readContext(): Promise<JobContext | null> {
+    signal.throwIfAborted();
+    const context = await readJobContext(tabId);
+    signal.throwIfAborted();
+    return context;
+  }
+  async function scan(): Promise<PageScan> {
     signal.throwIfAborted();
     try { return await scanTab(tabId); }
     catch (error: unknown) {
@@ -55,7 +61,7 @@ export function createBrowserDiscoveryPort(tabId: number, signal: AbortSignal): 
     }
   }
 
-  async function click(page: ApplicationForm, action: ApplicationAction): Promise<void> {
+  async function click(page: PageScan, action: ApplicationAction): Promise<void> {
     await assertActiveTab(tabId);
     signal.throwIfAborted();
     const results = await chrome.scripting.executeScript({ target: { tabId }, func: clickScannedAction, args: [page.scanId, action.index] });
@@ -64,7 +70,7 @@ export function createBrowserDiscoveryPort(tabId: number, signal: AbortSignal): 
     throw new Error(getClickFailureReason(result));
   }
 
-  async function waitForChange(previous: ApplicationForm): Promise<void> {
+  async function waitForChange(previous: PageScan): Promise<void> {
     const deadline = Date.now() + WAIT_TIMEOUT_MS;
     const before = pageFingerprint(previous);
     let last = "";
@@ -90,5 +96,5 @@ export function createBrowserDiscoveryPort(tabId: number, signal: AbortSignal): 
   }
 
   async function saveContext(context: JobContext): Promise<void> { await saveJobContext(tabId, context); }
-  return { scan, click, waitForChange, saveContext, learnAction: saveLearnedAction };
+  return { readContext, scan, click, waitForChange, saveContext, clearContext: () => clearJobContext(tabId), learnAction: saveLearnedAction };
 }

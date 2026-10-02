@@ -1,30 +1,11 @@
 import type { JobContext } from "../discovery/session";
 import { normalizeExpression, type LearnedAction } from "../shared/discovery-rules";
 import { isRecord } from "../shared/value-guards";
+import { isJobContext, isWebUrl } from "../shared/job-context";
+export { isJobContext } from "../shared/job-context";
 
 const LEARNED_KEY = "learnedApplicationActions";
 const MAX_LEARNED_LABELS = 100;
-
-function isWebUrl(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  if (value.length > 4096) return false;
-  try {
-    return ["https:", "http:"].includes(new URL(value).protocol);
-  } catch {
-    return false;
-  }
-}
-
-export function isJobContext(value: unknown): value is JobContext {
-  if (!isRecord(value)) return false;
-  if (typeof value.jobDescription !== "string") return false;
-  if (value.jobDescription.length > 20_000) return false;
-  if (!isWebUrl(value.sourceUrl)) return false;
-  if (!isWebUrl(value.lastPageUrl)) return false;
-  if (typeof value.capturedAt !== "string") return false;
-  if (!Number.isFinite(Date.parse(value.capturedAt))) return false;
-  return true;
-}
 
 function isLearnedAction(value: unknown): value is LearnedAction {
   if (!isRecord(value)) return false;
@@ -46,7 +27,12 @@ export async function loadJobContext(tabId: number): Promise<JobContext | null> 
 }
 
 export async function saveJobContext(tabId: number, context: JobContext): Promise<void> {
+  if (!isJobContext(context)) throw new Error("Invalid job context.");
   await chrome.storage.session.set({ [`jobContext:${tabId}`]: context });
+}
+
+export async function clearJobContext(tabId: number): Promise<void> {
+  await chrome.storage.session.remove(`jobContext:${tabId}`);
 }
 
 export async function loadLearnedActions(): Promise<LearnedAction[]> {

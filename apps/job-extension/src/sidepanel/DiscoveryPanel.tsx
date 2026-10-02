@@ -1,4 +1,6 @@
 import type { DiscoverySession, JobContext } from "../discovery/session";
+import { isWaitingForContextDecision, isWaitingForManualSelection } from "../discovery/guards";
+import { getMissingFormSignals } from "../shared/form-discovery";
 
 interface DiscoveryPanelProps {
   session: DiscoverySession | null;
@@ -6,6 +8,7 @@ interface DiscoveryPanelProps {
   trace: string[];
   busy: boolean;
   onSelect: (index: number | null) => void;
+  onContextDecision: (decision: "retry" | "skip" | null) => void;
 }
 
 function getCvCandidateMessage(session: DiscoverySession): string {
@@ -17,15 +20,28 @@ function getCvCandidateMessage(session: DiscoverySession): string {
   return `CV candidate: ${label} (${evidence}).`;
 }
 
-export function DiscoveryPanel({ session, context, trace, busy, onSelect }: DiscoveryPanelProps) {
+export function DiscoveryPanel({ session, context, trace, busy, onSelect, onContextDecision }: DiscoveryPanelProps) {
   return (
     <section aria-label="Application discovery">
-      {context && <details open className="job-context"><summary>Captured job description</summary>
+      {context && <details open className="job-context"><summary>Captured job text</summary>
         <p className="origin">Source: {context.sourceUrl}</p>
+        <p>The baseline reader may include other text from the page. Review the capture before using it for analysis.</p>
         <p className="description-text">{context.jobDescription}</p>
       </details>}
       {session?.status === "found" && <p className="notice">{getCvCandidateMessage(session)}</p>}
-      {session?.status === "paused" && <div>
+      {session?.assessment?.outcome === "partial" && <p className="notice">
+        Partial form area: missing {getMissingFormSignals(session.assessment).join(", ")}.
+      </p>}
+      {isWaitingForContextDecision(session) && <div>
+        <h2>Job context needs review</h2>
+        <p>{session.message}</p>
+        <p>Dismiss an obstruction or open the job details, then retry. You can also continue without a description.</p>
+        <button type="button" disabled={busy} onClick={() => onContextDecision("retry")}>Retry context acquisition</button>
+        <button type="button" disabled={busy} onClick={() => onContextDecision("skip")}>Continue without context</button>
+        <button type="button" disabled={busy} onClick={() => onContextDecision(null)}>Cancel discovery</button>
+      </div>}
+      {session?.contextSkipped && <p className="notice">Job context was explicitly skipped for this run.</p>}
+      {isWaitingForManualSelection(session) && <div>
         <h2>Choose the action that opens the application</h2>
         <p>Choosing an action resumes the graph and clicks it. Submission and upload actions are excluded.</p>
         <ol className="action-list">{session.candidates.map((action) => <li key={action.index}>
