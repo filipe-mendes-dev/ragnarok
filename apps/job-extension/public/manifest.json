@@ -3,7 +3,7 @@
   "minimum_chrome_version": "116",
   "name": "RAGnarok Job Form Inspector",
   "version": "0.1.0",
-  "description": "Inspect form fields on the current job application page.",
+  "description": "Inspect job pages and locate application forms with a local discovery workflow.",
   "action": {
     "default_title": "Open job form inspector"
   },
@@ -14,5 +14,5 @@
     "service_worker": "service-worker.js",
     "type": "module"
   },
-  "permissions": ["activeTab", "scripting", "sidePanel"]
+  "permissions": ["activeTab", "scripting", "sidePanel", "storage"]
 }

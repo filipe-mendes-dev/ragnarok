@@ -8,3 +8,9 @@ chrome.action.onClicked.addListener((tab) => {
     console.error("Could not open the side panel", error);
   });
 });
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove(`jobContext:${tabId}`).catch((error: unknown) => {
+    console.error("Could not clear closed-tab job context", error);
+  });
+});

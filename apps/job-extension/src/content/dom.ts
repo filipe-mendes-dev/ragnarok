@@ -30,3 +30,13 @@ export function getAriaLabelledBy(element: HTMLElement): string | null {
   const ids = element.getAttribute("aria-labelledby")?.split(/\s+/) ?? [];
   return cleanText(ids.map((id) => cleanText(document.getElementById(id)?.textContent ?? null)).filter((part): part is string => part !== null).join(" "));
 }
+
+export function getVisibleUploadTrigger(element: HTMLInputElement): HTMLElement | null {
+  const label = Array.from(element.labels ?? []).find(isVisible);
+  if (label) return label;
+  const parent = element.closest<HTMLElement>('button, [role="button"]');
+  if (parent && isVisible(parent)) return parent;
+  if (!element.id) return null;
+  return Array.from(document.querySelectorAll<HTMLElement>("[aria-controls]")).find((candidate) =>
+    candidate.getAttribute("aria-controls")?.split(/\s+/).includes(element.id) && isVisible(candidate)) ?? null;
+}
