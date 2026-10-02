@@ -122,6 +122,34 @@ describe("scanApplicationForm", () => {
     ]);
   });
 
+  it("resolves field labels in ARIA, HTML, upload-trigger, then nearby order", () => {
+    document.body.innerHTML = `
+      <span id="reference">ARIA reference</span>
+      <label for="first">HTML label</label>
+      <input id="first" aria-labelledby="reference" aria-label="ARIA text">
+      <label for="second">HTML label</label><input id="second" aria-label="ARIA text">
+      <label for="third">HTML label</label><input id="third">
+      <div><span>Nearby text</span><input id="fourth" type="file"></div>
+      <button type="button" aria-controls="fourth">Resume upload</button>
+      <div><span>Nearby text</span><input id="fifth"></div>
+    `;
+    expect(scanApplicationForm().fields.map((field) => [field.label, field.labelSource])).toEqual([
+      ["ARIA reference", "aria-labelledby"],
+      ["ARIA text", "aria-label"],
+      ["HTML label", "html-label"],
+      ["Resume upload", "upload-trigger"],
+      ["Nearby text", "nearby"],
+    ]);
+  });
+
+  it("does not replace an empty visible upload trigger with nearby text", () => {
+    document.body.innerHTML = `
+      <form><div><span>Nearby text</span><input id="resume" type="file"></div></form>
+      <button type="button" aria-controls="resume"></button>
+    `;
+    expect(scanApplicationForm().fields[0]).toMatchObject({ inputType: "file", label: null, labelSource: null });
+  });
+
   it("recognizes ARIA comboboxes, fieldsets, and visible actions without navigation", () => {
     document.body.innerHTML = `
       <form>
@@ -147,7 +175,39 @@ describe("scanApplicationForm", () => {
       ["button", "Apply now"],
       ["link", "Job description"],
     ]);
-    expect(JSON.stringify(result)).not.toContain("/description");
+    expect(result.actions[1]?.href).toBe(new URL("/description", location.href).href);
+  });
+
+  it("associates hidden uploads with visible labels and preserves their DOM order", () => {
+    document.body.innerHTML = `<form>
+      <label for="resume">Upload resume to autofill</label><input id="resume" type="file" style="display:none">
+      <label for="cover">Cover letter</label><input id="cover" type="file" hidden>
+      <input type="file" hidden id="unrelated">
+      <label>Full name<input name="full_name"></label><input type="email">
+    </form>`;
+    const result = scanApplicationForm();
+    expect(result.fields.map((field) => field.id)).toEqual(["resume", "cover", null, null]);
+    expect(result.fields.map((field) => field.areaKey)).toEqual(["form:0", "form:0", "form:0", "form:0"]);
+    expect(result.fields[0]).toMatchObject({ inputType: "file", label: "Upload resume to autofill", labelSource: "html-label" });
+  });
+
+  it("groups a form without a native form element and captures semantic application tabs", () => {
+    document.body.innerHTML = `<main><div><label>Name<input></label><input type="email"><input type="file"></div></main>
+      <div role="tab" aria-label="Application" tabindex="0">Open</div>`;
+    const result = scanApplicationForm();
+    expect(result.fields.map((field) => field.areaKey)).toEqual(["area:0", "area:0", "area:0"]);
+    expect(result.actions[0]).toMatchObject({ label: "Application", role: "tab" });
+  });
+
+  it("captures bounded job text without applicant answers, navigation, or hidden sections", () => {
+    document.body.innerHTML = `<article data-job-description><h2>Job description</h2><p>${"Build reliable systems. ".repeat(20)}</p>
+      <nav>Navigation noise</nav><textarea>Private applicant answer</textarea><div hidden>Hidden noise</div></article>`;
+    const result = scanApplicationForm();
+    expect(result.jobDescription.length).toBeGreaterThan(200);
+    expect(result.jobDescription).toContain("Build reliable systems.");
+    expect(result.jobDescription).not.toMatch(/Navigation noise|Private applicant answer|Hidden noise/);
+    document.querySelector("article")?.append("x".repeat(25_000));
+    expect(scanApplicationForm().jobDescription).toHaveLength(20_000);
   });
 
   it("bounds the number of returned fields and select options", () => {
