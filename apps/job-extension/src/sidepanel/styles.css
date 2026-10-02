@@ -146,3 +146,32 @@ pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.toolbar button,
+.candidate-action {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.description-text {
+    max-height: 320px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.discovery-trace {
+    padding-left: 20px;
+    overflow-wrap: anywhere;
+}
+
+.discovery-trace li {
+    margin-bottom: 8px;
+}
