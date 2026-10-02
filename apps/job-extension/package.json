@@ -10,9 +10,9 @@
   "scripts": {
     "dev": "npm run build && (npm run dev:panel & npm run dev:scripts & wait)",
     "dev:panel": "vite build --watch --base=./",
-    "dev:scripts": "esbuild content-script=src/content/entry.ts context-script=src/content/context-entry.ts service-worker=src/background/entry.ts --bundle --format=esm --target=chrome120 --outdir=dist --watch",
+    "dev:scripts": "esbuild content-script=src/content/application/entry.ts context-script=src/content/context-entry.ts service-worker=src/background/entry.ts --bundle --format=esm --target=chrome120 --outdir=dist --watch",
     "build": "vite build --base=./ --emptyOutDir && npm run build:scripts",
-    "build:scripts": "esbuild content-script=src/content/entry.ts context-script=src/content/context-entry.ts service-worker=src/background/entry.ts --bundle --format=esm --target=chrome120 --outdir=dist",
+    "build:scripts": "esbuild content-script=src/content/application/entry.ts context-script=src/content/context-entry.ts service-worker=src/background/entry.ts --bundle --format=esm --target=chrome120 --outdir=dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --environment jsdom",
     "check": "npm run typecheck && npm run test"
