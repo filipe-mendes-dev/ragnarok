@@ -36,7 +36,7 @@ export interface ApplicationAction {
   role: string | null;
 }
 
-export interface ApplicationForm {
+export interface PageScan {
   pageOrigin: string;
   pageUrl: string;
   pageTitle: string;
@@ -126,7 +126,7 @@ function isApplicationAction(value: unknown): value is ApplicationAction {
   return true;
 }
 
-export function isApplicationForm(value: unknown): value is ApplicationForm {
+export function isPageScan(value: unknown): value is PageScan {
   if (!isRecord(value)) return false;
   if (typeof value.pageOrigin !== "string") return false;
   if (typeof value.pageUrl !== "string") return false;
