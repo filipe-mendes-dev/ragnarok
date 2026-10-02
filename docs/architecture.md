@@ -368,11 +368,18 @@ Framework-independent services and repositories make future extraction possible 
 A separate API becomes justified if RAGnarok gains an independent mobile client, third-party API consumers, separate deployment/scaling requirements, or team ownership requiring an explicit service boundary.
 
 The repository separates the web app, ingestion worker, and job extension under
-`apps/`. The Chrome Manifest V3 extension currently scans the active page's visible
-form controls and actions on demand and displays a local-only result in a React popup.
-Its popup injects a bundled scanner file with `chrome.scripting.executeScript`;
-field detection, label resolution, and action detection are separate modules. V0 has
-no service worker, navigation automation, API calls, or authentication. When
+`apps/`. The Chrome Manifest V3 extension scans controls and actions and displays
+local results in a React side panel. A lazily loaded LangGraph.js workflow locates
+application forms through bounded same-origin navigation, deterministic rules,
+and checkpointed manual selection. The panel injects scanner and checked-click
+functions with `chrome.scripting.executeScript`. Field detection, label resolution,
+description capture, and action detection remain separate from orchestration.
+Browser-session storage preserves job descriptions; local storage retains bounded,
+exact action labels scoped to their origin. Graph checkpoints remain in panel
+memory. The service worker opens the panel and clears closed-tab context. This
+learning workflow belongs to the extension, outside the web application's two-week
+V1 scope; it adds no Python API, model calls, filling, or submission. See
+[the discovery guide](job-extension-discovery.md). When
 API-backed suggestions are added,
 the extension will need explicit web HTTP routes and an authentication/origin
 policy; moving directories does not supply those contracts. Keep `packages/`
