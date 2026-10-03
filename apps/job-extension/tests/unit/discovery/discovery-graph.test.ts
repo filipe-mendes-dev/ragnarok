@@ -1,22 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDiscoveryGraph, MAX_DISCOVERY_CLICKS } from "../../../src/discovery/discovery-graph";
 import { createDiscoverySession, type DiscoveryPort } from "../../../src/discovery/session";
-import type { ApplicationForm } from "../../../src/shared/application-form";
+import type { PageScan } from "../../../src/shared/page-scan";
 import { pageFingerprint } from "../../../src/shared/discovery-rules";
-import { makeAction, makeFormScan, makeScan } from "../support/application-fixtures";
+import { makeAction, makeFormScan, makeScan } from "../support/page-scan-fixtures";
+import { JOB_DESCRIPTION, makeAcceptedContext } from "../support/job-context-fixtures";
+import type { JobContext } from "../../../src/shared/job-context";
 
-function makePort(scans: ApplicationForm[]): DiscoveryPort {
+function makePort(scans: PageScan[], contexts: (JobContext | null)[] = [makeAcceptedContext({
+  jobDescription: scans[0]?.jobDescription || JOB_DESCRIPTION,
+  sourceUrl: scans[0]?.pageUrl ?? "https://jobs.example.com/job",
+  lastPageUrl: scans[0]?.pageUrl ?? "https://jobs.example.com/job",
+})]): DiscoveryPort {
   let index = 0;
+  let contextIndex = 0;
   return {
+    readContext: vi.fn(async () => {
+      const context = contexts[Math.min(contextIndex, contexts.length - 1)];
+      contextIndex += 1;
+      if (context === undefined) throw new Error("No context fixture available.");
+      return context;
+    }),
     scan: vi.fn(async () => {
       const scan = scans[Math.min(index, scans.length - 1)];
       index += 1;
       if (!scan) throw new Error("No fixture scan available.");
       return scan;
     }),
+    selectActionWithLlm: vi.fn<DiscoveryPort["selectActionWithLlm"]>().mockResolvedValue(null),
     click: vi.fn<DiscoveryPort["click"]>().mockResolvedValue(undefined),
     waitForChange: vi.fn<DiscoveryPort["waitForChange"]>().mockResolvedValue(undefined),
     saveContext: vi.fn<DiscoveryPort["saveContext"]>().mockResolvedValue(undefined),
+    clearContext: vi.fn<DiscoveryPort["clearContext"]>().mockResolvedValue(undefined),
     learnAction: vi.fn<DiscoveryPort["learnAction"]>().mockResolvedValue(undefined),
   };
 }
@@ -43,7 +58,7 @@ describe("application discovery graph", () => {
   });
 
   it("retains the first description when a later application route has different job text", async () => {
-    const overview = makeScan({ jobDescription: "Original job description.", actions: [makeAction()] });
+    const overview = makeScan({ jobDescription: JOB_DESCRIPTION, actions: [makeAction()] });
     const application = makeFormScan({ jobDescription: "Application page text." });
     const port = makePort([overview, application]);
     const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
@@ -52,11 +67,11 @@ describe("application discovery graph", () => {
       sourceUrl: overview.pageUrl,
       lastPageUrl: application.pageUrl,
     });
-    expect(port.saveContext).toHaveBeenCalledTimes(2);
+    expect(port.saveContext).toHaveBeenCalledTimes(3);
   });
 
   it("navigates deterministically and preserves the overview description on the form route", async () => {
-    const overview = makeScan({ jobDescription: "Build systems for our engineering team.", actions: [makeAction()] });
+    const overview = makeScan({ jobDescription: JOB_DESCRIPTION, actions: [makeAction()] });
     const port = makePort([overview, makeFormScan()]);
     const graph = createDiscoveryGraph(port);
     const stages: string[] = [];
@@ -67,7 +82,7 @@ describe("application discovery graph", () => {
       stages.push(state.session.stage);
       description = state.session.context?.jobDescription ?? "";
     }
-    expect(stages).toEqual(["start", "scan", "assess", "choose", "click", "wait", "scan", "assess", "assess"]);
+    expect(stages).toEqual(["start", "context", "scan", "assess", "choose", "click", "wait", "scan", "assess", "assess"]);
     expect(description).toBe(overview.jobDescription);
     expect(port.click).toHaveBeenCalledExactlyOnceWith(overview, overview.actions[0]);
     expect(port.waitForChange).toHaveBeenCalledExactlyOnceWith(overview);
@@ -126,14 +141,21 @@ describe("application discovery graph", () => {
     expect(port.learnAction).not.toHaveBeenCalled();
   });
 
-  it("stops on partial or incomplete evidence before navigation", async () => {
+  it("continues action discovery from partial form evidence", async () => {
     const form = makeFormScan();
-    for (const scan of [{ ...form, fields: form.fields.slice(0, 2), actions: [makeAction()] }, makeScan({ actions: [makeAction()], actionsTruncated: true })]) {
-      const port = makePort([scan]);
-      const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
-      expect(result.session.status).toBe("stopped");
-      expect(port.click).not.toHaveBeenCalled();
-    }
+    const partial = { ...form, fields: form.fields.slice(0, 2), actions: [makeAction()] };
+    const port = makePort([partial, form]);
+    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
+    expect(result.session.status).toBe("found");
+    expect(port.click).toHaveBeenCalledExactlyOnceWith(partial, partial.actions[0]);
+  });
+
+  it("stops on incomplete scans before navigation", async () => {
+    const port = makePort([makeScan({ actions: [makeAction()], actionsTruncated: true })]);
+    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
+    expect(result.session.status).toBe("stopped");
+    expect(port.click).not.toHaveBeenCalled();
+    expect(port.selectActionWithLlm).not.toHaveBeenCalled();
   });
 
   it("stops on page cycles and enforces the click budget", async () => {
@@ -161,11 +183,13 @@ describe("application discovery graph", () => {
   });
 
   it("does not reuse a saved description for a different job", async () => {
-    const port = makePort([makeFormScan()]);
-    const context = { jobDescription: "A different job.", sourceUrl: "https://jobs.example.com/other", lastPageUrl: "https://jobs.example.com/other/application", capturedAt: "2026-10-01T10:00:00Z" };
-    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7, [], context) }, runConfig());
+    const port = makePort([makeFormScan()], [null]);
+    const context = makeAcceptedContext({ sourceUrl: "https://jobs.example.com/other" });
+    const result = await createDiscoveryGraph(port).invoke({ session: { ...createDiscoverySession(7), context } }, runConfig());
     expect(result.session.context).toBeNull();
+    expect(result.session.pauseReason).toBe("context");
     expect(port.saveContext).not.toHaveBeenCalled();
+    expect(port.scan).not.toHaveBeenCalled();
   });
 
   it("stops when navigation moves to another origin", async () => {
@@ -174,5 +198,123 @@ describe("application discovery graph", () => {
     expect(result.session.status).toBe("stopped");
     expect(result.session.message).toContain("changed origin");
     expect(port.learnAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("LLM action fallback", () => {
+  it("skips the provider when several recognized labels have a deterministic priority", async () => {
+    const overview = makeScan({ actions: [makeAction({ index: 3, label: "Application" }), makeAction({ index: 4, label: "Apply for this Job" })] });
+    const port = makePort([overview, makeFormScan()]);
+    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
+    expect(result.session.status).toBe("found");
+    expect(port.click).toHaveBeenCalledExactlyOnceWith(overview, overview.actions[1]);
+    expect(port.selectActionWithLlm).not.toHaveBeenCalled();
+  });
+
+  it("clicks a provider-selected candidate through the existing navigation flow without learning it", async () => {
+    const action = makeAction({ label: "Join our team" });
+    const overview = makeScan({ actions: [action] });
+    const port = makePort([overview, makeFormScan()]);
+    vi.mocked(port.selectActionWithLlm).mockResolvedValue(action);
+    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
+    expect(result.session).toMatchObject({ status: "found", selectionSource: "llm", clicks: 1 });
+    expect(port.selectActionWithLlm).toHaveBeenCalledExactlyOnceWith(overview, [action]);
+    expect(port.click).toHaveBeenCalledExactlyOnceWith(overview, action);
+    expect(port.waitForChange).toHaveBeenCalledExactlyOnceWith(overview);
+    expect(port.learnAction).not.toHaveBeenCalled();
+  });
+
+  it.each(["below threshold", "provider failure"])("pauses before manual selection on %s", async (outcome) => {
+    const overview = makeScan({ actions: [makeAction({ label: "Join our team" })] });
+    const port = makePort([overview]);
+    if (outcome === "provider failure") vi.mocked(port.selectActionWithLlm).mockRejectedValue(new Error("Provider unavailable."));
+    const graph = createDiscoveryGraph(port);
+    const config = runConfig();
+    const result = await graph.invoke({ session: createDiscoverySession(7) }, config);
+    expect(result.session).toMatchObject({ status: "paused", pauseReason: "action", stage: "llmActionChoice", candidates: overview.actions });
+    expect((await graph.getState(config)).next).toEqual(["manual"]);
+    expect(port.selectActionWithLlm).toHaveBeenCalledTimes(1);
+    expect(port.click).not.toHaveBeenCalled();
+  });
+});
+
+describe("job context as the first graph phase", () => {
+  it("acquires original context before inspecting the application controls", async () => {
+    const port = makePort([makeFormScan()]);
+    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
+    expect(result.session.contextSkipped).toBe(false);
+    expect(result.session.context?.jobDescription).toBe(JOB_DESCRIPTION);
+    expect(vi.mocked(port.readContext).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(port.scan).mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it("pauses before any application scan or click when context is missing", async () => {
+    const port = makePort([makeFormScan()], [null]);
+    const graph = createDiscoveryGraph(port);
+    const config = runConfig();
+    const result = await graph.invoke({ session: createDiscoverySession(7) }, config);
+    expect(result.session).toMatchObject({ status: "paused", pauseReason: "context", context: null });
+    expect((await graph.getState(config)).next).toEqual(["contextDecision"]);
+    expect(port.scan).not.toHaveBeenCalled();
+    expect(port.click).not.toHaveBeenCalled();
+  });
+
+  it("continues only after explicit skip and never fills context from later raw scan text", async () => {
+    const port = makePort([makeScan({ actions: [makeAction()] }), makeFormScan({ jobDescription: JOB_DESCRIPTION })], [null]);
+    const graph = createDiscoveryGraph(port);
+    const config = runConfig();
+    const paused = await graph.invoke({ session: createDiscoverySession(7) }, config);
+    await graph.updateState(config, { session: { ...paused.session, contextResponse: "skip" } });
+    const result = await graph.invoke(null, config);
+    expect(result.session).toMatchObject({ status: "found", contextSkipped: true, context: null });
+    expect(port.readContext).toHaveBeenCalledTimes(1);
+    expect(port.click).toHaveBeenCalledTimes(1);
+    expect(port.saveContext).not.toHaveBeenCalled();
+    expect(port.clearContext).toHaveBeenCalledTimes(1);
+  });
+
+  it("recollects context after retry before entering application discovery", async () => {
+    const pageUrl = "https://jobs.example.com/job/application";
+    const port = makePort([makeFormScan()], [null, makeAcceptedContext({ sourceUrl: pageUrl, lastPageUrl: pageUrl })]);
+    const graph = createDiscoveryGraph(port);
+    const config = runConfig();
+    const paused = await graph.invoke({ session: createDiscoverySession(7) }, config);
+    await graph.updateState(config, { session: { ...paused.session, contextResponse: "retry" } });
+    const result = await graph.invoke(null, config);
+    expect(result.session).toMatchObject({ status: "found", contextSkipped: false, pauseReason: null });
+    expect(result.session.context?.sourceUrl).toBe(pageUrl);
+    expect(port.readContext).toHaveBeenCalledTimes(2);
+    expect(port.scan).toHaveBeenCalledTimes(1);
+  });
+
+  it("pauses again after an unsuccessful retry without an automatic retry loop", async () => {
+    const port = makePort([makeFormScan()], [null]);
+    const graph = createDiscoveryGraph(port);
+    const config = runConfig();
+    const paused = await graph.invoke({ session: createDiscoverySession(7) }, config);
+    await graph.updateState(config, { session: { ...paused.session, contextResponse: "retry" } });
+    const result = await graph.invoke(null, config);
+    expect(result.session.status).toBe("paused");
+    expect((await graph.getState(config)).next).toEqual(["contextDecision"]);
+    expect(port.readContext).toHaveBeenCalledTimes(2);
+    expect(port.scan).not.toHaveBeenCalled();
+  });
+
+  it("cancels a context pause without entering the application flow", async () => {
+    const port = makePort([makeFormScan()], [null]);
+    const graph = createDiscoveryGraph(port);
+    const config = runConfig();
+    await graph.invoke({ session: createDiscoverySession(7) }, config);
+    const result = await graph.invoke(null, config);
+    expect(result.session.status).toBe("stopped");
+    expect(port.scan).not.toHaveBeenCalled();
+  });
+
+  it("reports technical observation failures without pretending the description is absent", async () => {
+    const port = makePort([makeFormScan()]);
+    vi.mocked(port.readContext).mockRejectedValue(new Error("Page access denied."));
+    const result = await createDiscoveryGraph(port).invoke({ session: createDiscoverySession(7) }, runConfig());
+    expect(result.session).toMatchObject({ status: "stopped", stage: "context", message: "Page access denied.", context: null });
+    expect(port.clearContext).not.toHaveBeenCalled();
+    expect(port.scan).not.toHaveBeenCalled();
   });
 });

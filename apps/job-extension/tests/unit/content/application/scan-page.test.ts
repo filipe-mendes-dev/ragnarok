@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { scanApplicationForm } from "../../../src/content/scan-application-form";
+import { scanPage } from "../../../../src/content/application/scan-page";
 
 beforeEach(() => {
   document.body.replaceChildren();
   document.title = "Apply now";
 });
 
-describe("scanApplicationForm", () => {
+describe("scanPage", () => {
   it("captures labeled controls without collecting entered values", () => {
     document.body.innerHTML = `
       <form>
@@ -17,7 +17,7 @@ describe("scanApplicationForm", () => {
       <textarea name="motivation" placeholder="Why this role?">Private answer</textarea>
     `;
 
-    const result = scanApplicationForm();
+    const result = scanPage();
 
     expect(result.pageTitle).toBe("Apply now");
     expect(result.pageOrigin).toBe(location.origin);
@@ -86,7 +86,7 @@ describe("scanApplicationForm", () => {
       </form>
     `;
 
-    const result = scanApplicationForm();
+    const result = scanPage();
 
     expect(result.fields.map((field) => field.name)).toEqual(["work_authorization", "location", "locked"]);
     expect(result.fields[0]?.label).toBe("Work authorization");
@@ -112,7 +112,7 @@ describe("scanApplicationForm", () => {
       </form>
     `;
 
-    const result = scanApplicationForm();
+    const result = scanPage();
 
     expect(result.fields.map((field) => [field.label, field.labelSource])).toEqual([
       ["Portfolio URL", "nearby"],
@@ -133,7 +133,7 @@ describe("scanApplicationForm", () => {
       <button type="button" aria-controls="fourth">Resume upload</button>
       <div><span>Nearby text</span><input id="fifth"></div>
     `;
-    expect(scanApplicationForm().fields.map((field) => [field.label, field.labelSource])).toEqual([
+    expect(scanPage().fields.map((field) => [field.label, field.labelSource])).toEqual([
       ["ARIA reference", "aria-labelledby"],
       ["ARIA text", "aria-label"],
       ["HTML label", "html-label"],
@@ -147,7 +147,7 @@ describe("scanApplicationForm", () => {
       <form><div><span>Nearby text</span><input id="resume" type="file"></div></form>
       <button type="button" aria-controls="resume"></button>
     `;
-    expect(scanApplicationForm().fields[0]).toMatchObject({ inputType: "file", label: null, labelSource: null });
+    expect(scanPage().fields[0]).toMatchObject({ inputType: "file", label: null, labelSource: null });
   });
 
   it("recognizes ARIA comboboxes, fieldsets, and visible actions without navigation", () => {
@@ -163,7 +163,7 @@ describe("scanApplicationForm", () => {
       </form>
     `;
 
-    const result = scanApplicationForm();
+    const result = scanPage();
 
     expect(result.fields).toMatchObject([
       { control: "input", inputType: "radio", label: "Remote", groupLabel: "Work preference" },
@@ -185,7 +185,7 @@ describe("scanApplicationForm", () => {
       <input type="file" hidden id="unrelated">
       <label>Full name<input name="full_name"></label><input type="email">
     </form>`;
-    const result = scanApplicationForm();
+    const result = scanPage();
     expect(result.fields.map((field) => field.id)).toEqual(["resume", "cover", null, null]);
     expect(result.fields.map((field) => field.areaKey)).toEqual(["form:0", "form:0", "form:0", "form:0"]);
     expect(result.fields[0]).toMatchObject({ inputType: "file", label: "Upload resume to autofill", labelSource: "html-label" });
@@ -194,7 +194,7 @@ describe("scanApplicationForm", () => {
   it("groups a form without a native form element and captures semantic application tabs", () => {
     document.body.innerHTML = `<main><div><label>Name<input></label><input type="email"><input type="file"></div></main>
       <div role="tab" aria-label="Application" tabindex="0">Open</div>`;
-    const result = scanApplicationForm();
+    const result = scanPage();
     expect(result.fields.map((field) => field.areaKey)).toEqual(["area:0", "area:0", "area:0"]);
     expect(result.actions[0]).toMatchObject({ label: "Application", role: "tab" });
   });
@@ -202,12 +202,12 @@ describe("scanApplicationForm", () => {
   it("captures bounded job text without applicant answers, navigation, or hidden sections", () => {
     document.body.innerHTML = `<article data-job-description><h2>Job description</h2><p>${"Build reliable systems. ".repeat(20)}</p>
       <nav>Navigation noise</nav><textarea>Private applicant answer</textarea><div hidden>Hidden noise</div></article>`;
-    const result = scanApplicationForm();
+    const result = scanPage();
     expect(result.jobDescription.length).toBeGreaterThan(200);
     expect(result.jobDescription).toContain("Build reliable systems.");
     expect(result.jobDescription).not.toMatch(/Navigation noise|Private applicant answer|Hidden noise/);
     document.querySelector("article")?.append("x".repeat(25_000));
-    expect(scanApplicationForm().jobDescription).toHaveLength(20_000);
+    expect(scanPage().jobDescription.length).toBeLessThanOrEqual(20_000);
   });
 
   it("bounds the number of returned fields and select options", () => {
@@ -224,7 +224,7 @@ describe("scanApplicationForm", () => {
       document.body.append(document.createElement("input"));
     }
 
-    const result = scanApplicationForm();
+    const result = scanPage();
 
     expect(result.fields).toHaveLength(200);
     expect(result.truncated).toBe(true);

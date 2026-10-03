@@ -1,48 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assessApplicationForm, chooseApplicationAction } from "../../../src/shared/discovery-rules";
-import { makeAction, makeField, makeFormScan, makeScan } from "../support/application-fixtures";
-
-describe("assessApplicationForm", () => {
-  it("accepts name, email, and an unlabelled file without requiring required attributes", () => {
-    const scan = makeFormScan();
-    scan.fields[2] = makeField({ index: 2, inputType: "file" });
-    expect(assessApplicationForm(scan)).toMatchObject({ outcome: "found", cvIndex: 2, cvEvidence: "first-file" });
-  });
-
-  it("does not combine recognition signals from unrelated forms or ungrouped controls", () => {
-    const scan = makeFormScan();
-    scan.fields[2] = makeField({ index: 2, inputType: "file", formIndex: 1, areaKey: "form:1" });
-    expect(assessApplicationForm(scan).outcome).toBe("partial");
-    expect(assessApplicationForm({ ...scan, fields: scan.fields.map((field) => ({ ...field, areaKey: null })) }).outcome).toBe("absent");
-  });
-
-  it("prefers resume autofill over attachment and excludes cover letters from CV fallback", () => {
-    const scan = makeFormScan({ fields: [makeField({ label: "First name" }), makeField({ index: 1, inputType: "email" }),
-      makeField({ index: 2, inputType: "file", label: "Cover letter" }), makeField({ index: 3, inputType: "file", label: "Resume attachment" }),
-      makeField({ index: 4, inputType: "file", label: "Upload résumé to autofill" }), makeField({ index: 5, inputType: "file", label: "Certificates" })] });
-    expect(assessApplicationForm(scan)).toMatchObject({ outcome: "found", fileIndices: [2, 3, 4, 5], cvIndex: 4, cvEvidence: "label" });
-  });
-
-  it("finds the form even if its only upload is labelled cover letter", () => {
-    const scan = makeFormScan();
-    scan.fields[2] = makeField({ index: 2, inputType: "file", label: "Cover letter" });
-    expect(assessApplicationForm(scan)).toMatchObject({ outcome: "found", cvIndex: null });
-  });
-
-  it("recognizes metadata evidence without mistaking company name or a checkbox for applicant fields", () => {
-    const scan = makeFormScan({ fields: [makeField({ autocomplete: "given-name" }), makeField({ index: 1, name: "candidate_email" }), makeField({ index: 2, inputType: "file" })] });
-    expect(assessApplicationForm(scan).outcome).toBe("found");
-    scan.fields[0] = makeField({ label: "Company name" });
-    scan.fields[1] = makeField({ index: 1, inputType: "checkbox", label: "Email updates" });
-    expect(assessApplicationForm(scan).outcome).toBe("absent");
-  });
-
-  it("reports ambiguity when two form areas contain all recognition signals", () => {
-    const scan = makeFormScan();
-    scan.fields.push(...scan.fields.map((field) => ({ ...field, index: field.index + 3, areaKey: "form:1", formIndex: 1 })));
-    expect(assessApplicationForm(scan).outcome).toBe("ambiguous");
-  });
-});
+import { chooseApplicationAction } from "../../../src/shared/discovery-rules";
+import { makeAction, makeScan } from "../support/page-scan-fixtures";
 
 describe("chooseApplicationAction", () => {
   it("matches normalized application-opening phrases and rejects final submission", () => {
@@ -50,10 +8,27 @@ describe("chooseApplicationAction", () => {
     expect(chooseApplicationAction(scan, [])).toMatchObject({ action: { index: 0 }, source: "keyword", candidates: [{ index: 0 }] });
   });
 
-  it("requires a unique match and does not use arbitrary application substrings", () => {
-    const scan = makeScan({ actions: [makeAction(), makeAction({ index: 1, label: "Application" }), makeAction({ index: 2, label: "Application settings" })] });
-    expect(chooseApplicationAction(scan, []).action).toBeNull();
-    expect(chooseApplicationAction({ ...scan, actions: [scan.actions[2]!] }, []).action).toBeNull();
+  it("prefers explicit apply wording when an application tab also matches", () => {
+    const scan = makeScan({ actions: [
+      makeAction({ index: 1, label: "Back to ElevenLabs’s Job Listings" }),
+      makeAction({ index: 2, label: "Overview" }),
+      makeAction({ index: 3, label: "Application" }),
+      makeAction({ index: 4, label: "Apply for this Job" }),
+    ] });
+    expect(chooseApplicationAction(scan, [])).toMatchObject({ action: { index: 4 }, source: "keyword" });
+  });
+
+  it("uses scan index to break ties without reordering the page inventory", () => {
+    const first = makeAction({ index: 9 });
+    const second = makeAction({ index: 2 });
+    const scan = makeScan({ actions: [first, second] });
+    expect(chooseApplicationAction(scan, []).action).toBe(second);
+    expect(scan.actions).toEqual([first, second]);
+  });
+
+  it("preserves unknown eligible actions for fallback without matching arbitrary substrings", () => {
+    const scan = makeScan({ actions: [makeAction({ label: "Application settings" })] });
+    expect(chooseApplicationAction(scan, [])).toEqual({ action: null, candidates: scan.actions, source: null });
   });
 
   it("uses learned exact labels only on their recorded origin", () => {
@@ -63,7 +38,12 @@ describe("chooseApplicationAction", () => {
     expect(chooseApplicationAction({ ...scan, pageOrigin: "https://other.example.com" }, learned).action).toBeNull();
   });
 
-  it("excludes disabled, submitting, upload, new-tab, and non-web actions from manual candidates", () => {
+  it("prefers explicit built-in wording over a learned phrase", () => {
+    const scan = makeScan({ actions: [makeAction({ label: "Join our team" }), makeAction({ index: 1, label: "Start your application" })] });
+    expect(chooseApplicationAction(scan, [{ origin: scan.pageOrigin, label: "join our team" }])).toMatchObject({ action: { index: 1 }, source: "keyword" });
+  });
+
+  it("excludes disabled, submitting, upload, new-tab, and non-web actions from all candidates", () => {
     const scan = makeScan({ actions: [makeAction({ disabled: true }), makeAction({ formIndex: 0, buttonType: "submit" }),
       makeAction({ label: "Upload resume" }), makeAction({ target: "_blank" }), makeAction({ href: "javascript:void(0)" })] });
     expect(chooseApplicationAction(scan, []).candidates).toEqual([]);

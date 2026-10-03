@@ -1,15 +1,34 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isJobContext, loadLearnedActions, saveLearnedAction } from "../../../src/sidepanel/discovery-storage";
+import { clearJobContext, isJobContext, loadJobContext, loadLearnedActions, saveJobContext, saveLearnedAction } from "../../../src/sidepanel/discovery-storage";
+import { makeAcceptedContext } from "../support/job-context-fixtures";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("discovery storage", () => {
   it("rejects oversized descriptions, invalid sources, and invalid capture times", () => {
-    const context = { jobDescription: "Build software.", sourceUrl: "https://jobs.example.com/job", lastPageUrl: "https://jobs.example.com/job/application", capturedAt: "2026-10-01T10:00:00Z" };
+    const context = makeAcceptedContext();
     expect(isJobContext(context)).toBe(true);
     expect(isJobContext({ ...context, jobDescription: "x".repeat(20_001) })).toBe(false);
     expect(isJobContext({ ...context, sourceUrl: "javascript:void(0)" })).toBe(false);
     expect(isJobContext({ ...context, capturedAt: "invalid" })).toBe(false);
+    expect(isJobContext({ ...context, jobDescription: " " })).toBe(false);
+  });
+
+  it("loads the current simple context shape without requiring removed acquisition evidence", async () => {
+    const context = makeAcceptedContext();
+    vi.stubGlobal("chrome", { storage: { session: { get: async () => ({ "jobContext:7": context }) } } });
+    expect(await loadJobContext(7)).toEqual(context);
+  });
+
+  it("saves captured context and clears only the current tab's context", async () => {
+    const set = vi.fn().mockResolvedValue(undefined);
+    const remove = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("chrome", { storage: { session: { set, remove } } });
+    const context = makeAcceptedContext();
+    await saveJobContext(7, context);
+    await clearJobContext(7);
+    expect(set).toHaveBeenCalledExactlyOnceWith({ "jobContext:7": context });
+    expect(remove).toHaveBeenCalledExactlyOnceWith("jobContext:7");
   });
 
   it("does not reuse malformed or non-normalized learned labels", async () => {
