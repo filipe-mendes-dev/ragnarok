@@ -16,7 +16,8 @@ interface RecognizedAction {
   source: "keyword" | "learned";
 }
 
-const OPEN_APPLICATION = /^(?:apply|apply now|apply for (?:this|the) (?:job|role|position)|apply for (?:job|role|position)|application|job application|start (?:your )?application|begin (?:your )?application)$/;
+const EXPLICIT_APPLICATION_ACTION = /^(?:apply|apply now|apply for (?:this|the) (?:job|role|position)|apply for (?:job|role|position)|start (?:your )?application|begin (?:your )?application)$/;
+const APPLICATION_SECTION = /^(?:application|job application)$/;
 const EXCLUDED_ACTION = /\b(?:submit|send|withdraw|delete|cancel|sign in|log in|login|sign out|logout|upload|download|cover letter|certificate|job alert|save job)\b/;
 
 export function normalizeExpression(value: string): string {
@@ -75,9 +76,15 @@ export function isEligibleNavigationAction(action: ApplicationAction): boolean {
 
 export function recognizeApplicationActionLabel(label: string, origin: string, learned: LearnedAction[]): RecognizedAction["source"] | null {
   const normalizedLabel = normalizeExpression(label);
-  if (OPEN_APPLICATION.test(normalizedLabel)) return "keyword";
+  if (EXPLICIT_APPLICATION_ACTION.test(normalizedLabel)) return "keyword";
+  if (APPLICATION_SECTION.test(normalizedLabel)) return "keyword";
   if (learned.some((entry) => entry.origin === origin && entry.label === normalizedLabel)) return "learned";
   return null;
+}
+
+function getApplicationActionPriority(action: ApplicationAction): number {
+  if (EXPLICIT_APPLICATION_ACTION.test(normalizeExpression(action.label ?? ""))) return 1;
+  return 0;
 }
 
 export function chooseApplicationAction(scan: PageScan, learned: LearnedAction[]): ActionSelection {
@@ -88,7 +95,10 @@ export function chooseApplicationAction(scan: PageScan, learned: LearnedAction[]
     if (source === null) continue;
     matches.push({ action, source });
   }
-  if (matches.length !== 1) return { action: null, candidates, source: null };
+  matches.sort((left, right) =>
+    getApplicationActionPriority(right.action) - getApplicationActionPriority(left.action)
+    || left.action.index - right.action.index,
+  );
   const match = matches[0];
   if (!match) return { action: null, candidates, source: null };
   return { action: match.action, candidates, source: match.source };
