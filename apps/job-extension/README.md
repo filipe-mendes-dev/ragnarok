@@ -60,13 +60,21 @@ The graph trace shows deterministic `choose` and model fallback `llmActionChoice
 ## How the scan works
 
 1. `public/manifest.json` registers `index.html` as the side panel and a small background service worker. The worker handles toolbar clicks directly to grant `activeTab` access and open the panel. It also clears the former automatic panel behavior after an extension reload.
-2. `index.html` mounts `src/sidepanel/App.tsx` through `main.tsx`. React owns the scan button, status, and results. `scan-active-tab.ts` queries the active tab and injects `context-script.js` for job context, then `content-script.js` for controls, using `chrome.scripting.executeScript`.
+2. `index.html` mounts `src/sidepanel/App.tsx` through `main.tsx`. `App` composes the UI, while `hooks/useSidepanel.ts` owns displayed state and coordinates scan/discovery actions. `scan-active-tab.ts` queries the active tab and injects `context-script.js` for job context, then `content-script.js` for controls, using `chrome.scripting.executeScript`.
 3. The injected file runs in Chrome's isolated content-script world. `content/application/scan-page.ts` calls `scanFields` and `scanActions`. Field collection, label resolution, and area assignment stay together in `scan-fields.ts`; action collection and labelling stay in `scan-actions.ts`. The scanner returns plain, serializable metadata as its final expression. The panel validates it with `isPageScan` before rendering it.
 4. Explicit ARIA and HTML labels take priority. When a field has none, short text beside an isolated control may become a **plausible** label. Hidden file inputs are included when a visible label, containing upload button, or explicit `aria-controls` trigger supports the association. Native selects include bounded option lists; ARIA comboboxes and listbox buttons are identified without opening them. Actions include semantic tabs and link destinations, with live element references retained only inside the isolated scanner world.
 5. `shared/form-discovery.ts` checks enabled fields in each area for name, email, and a file input. Exactly one complete area succeeds. A partial area retains its detected fields and reports the missing signal while discovery continues to action selection. Multiple complete areas stop for review.
 6. `capture-job-description.ts` tries known description containers, then reads main content or the page body. It excludes hidden content, navigation, page-level headers, footers, scripts, controls, and editable answers, and returns up to 20,000 characters. The context entry and controls scan use this same reader. No block inventory, candidate ranking, JSON-LD parser, or model selector is present.
 
 The panel and page scanner do not share a JavaScript environment. `executeScript` bridges them. Vite builds the panel and lazily loads the LangGraph browser bundle when discovery starts; esbuild bundles the context collector, controls scanner, and service worker separately. Scanning and deterministic discovery work without the backend. Unresolved action selection tries the API and retains manual choice if unavailable. The service worker opens the panel and cleans up closed-tab context; the panel owns the graph and HTTP request.
+
+## Side panel organization
+
+- `App.tsx` composes account status, the toolbar, live status, discovery sections, and scan results.
+- `hooks/useSidepanel.ts` owns the displayed scan, context, session, status, trace, and busy state. One immediate operation lock prevents scans and discovery actions from overlapping. Manual scanning retains the previous scan until a replacement succeeds; starting discovery clears it.
+- `hooks/useDiscoveryRun.ts` owns the graph, thread ID, abort controller, lazy loading, streaming, and checkpoint resume. It reports sessions to `useSidepanel` and aborts when the panel closes. It does not maintain another copy of the displayed session.
+- `components/AccountStatus.tsx` owns account checking and refresh listeners. `components/SidepanelToolbar.tsx` receives callbacks and button availability. `components/ScanResult.tsx` keeps field/action cards and result rendering together.
+- `DiscoveryPanel.tsx` composes named context, decision, action-selection, and trace components within one module. Existing browser adapters, storage helpers, and styles retain their responsibilities.
 
 ## Verify
 
