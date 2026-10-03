@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { APP_URL } from "../config";
 import type { createDiscoveryGraph } from "../discovery/discovery-graph";
 import { isWaitingForContextDecision, isWaitingForManualSelection } from "../discovery/guards";
 import { createDiscoverySession, type DiscoverySession, type JobContext } from "../discovery/session";
@@ -7,6 +8,12 @@ import { getActiveTabId, readJobContext, scanTab } from "./scan-active-tab";
 import { createBrowserDiscoveryPort } from "./browser-discovery-port";
 import { clearJobContext, loadJobContext, loadLearnedActions, saveJobContext } from "./discovery-storage";
 import { DiscoveryPanel } from "./DiscoveryPanel";
+import { isRecord } from "../shared/value-guards";
+
+interface AccountStatusState {
+  status: "loading" | "ready" | "unavailable";
+  name: string | null;
+}
 
 interface DiscoveryRun {
   graph: ReturnType<typeof createDiscoveryGraph>;
@@ -83,6 +90,58 @@ function ScanResult({ scan }: { scan: PageScan }) {
       </details>
     </section>
   );
+}
+
+function AccountStatus() {
+  const [account, setAccount] = useState<AccountStatusState>({ status: "loading", name: null });
+
+  useEffect(() => {
+    let pending: AbortController | null = null;
+
+    async function refreshAccount(): Promise<void> {
+      pending?.abort();
+      const controller = new AbortController();
+      pending = controller;
+      setAccount({ status: "loading", name: null });
+      try {
+        const response = await fetch(`${APP_URL}/api/auth/get-session`, {
+          credentials: "include",
+          cache: "no-store",
+          redirect: "error",
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]),
+        });
+        if (!response.ok) throw new Error("Could not check the account session.");
+        const result: unknown = await response.json();
+        if (controller.signal.aborted) return;
+        if (result === null) {
+          setAccount({ status: "ready", name: null });
+          return;
+        }
+        if (!isRecord(result) || !isRecord(result.user) || typeof result.user.name !== "string") {
+          throw new Error("Invalid account session response.");
+        }
+        setAccount({ status: "ready", name: result.user.name });
+      } catch {
+        if (controller.signal.aborted) return;
+        setAccount({ status: "unavailable", name: null });
+      }
+    }
+
+    function handleRefresh(): void { void refreshAccount(); }
+    handleRefresh();
+    chrome.tabs.onActivated.addListener(handleRefresh);
+    window.addEventListener("focus", handleRefresh);
+    return () => {
+      pending?.abort();
+      chrome.tabs.onActivated.removeListener(handleRefresh);
+      window.removeEventListener("focus", handleRefresh);
+    };
+  }, []);
+
+  if (account.status === "loading") return <p role="status">Checking RAGnarok sign-in...</p>;
+  if (account.status === "unavailable") return <p role="status">Could not check your sign-in. <a href={APP_URL} target="_blank" rel="noreferrer">Open RAGnarok</a> and return to this tab to retry.</p>;
+  if (account.name !== null) return <p role="status">Signed in as <strong>{account.name}</strong>.</p>;
+  return <p><a href={`${APP_URL}/sign-in`} target="_blank" rel="noreferrer">Sign in to RAGnarok</a> to use automatic action selection with your existing account.</p>;
 }
 
 export function App() {
@@ -217,7 +276,8 @@ export function App() {
   return (
     <main>
       <h1>Job form inspector</h1>
-      <p className="intro">Scan this page or locate its application form. Discovery can click navigation actions. Page data stays in this extension.</p>
+      <p className="intro">Scan this page or locate its application form. Discovery can click navigation actions. Automatic fallback sends the page title and eligible action labels to RAGnarok.</p>
+      <AccountStatus />
       <div className="toolbar">
         <button type="button" onClick={() => void handleScan()} disabled={busy}>Scan page</button>
         <button type="button" onClick={() => void handleDiscover()} disabled={busy}>Find application form</button>
