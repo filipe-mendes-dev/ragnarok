@@ -116,6 +116,24 @@ routes. The form has both an optional resume upload for autofill and a separate
 required Resume upload. The Overview exposes an "Apply for this Job" link to the
 form; the form exposes a separate "Submit Application" button.
 
+At the 2026-10-03 checkpoint, the implemented baseline includes plain-text context
+capture with retry/skip, field/action scanning, name/email/file form recognition,
+and bounded LangGraph discovery with manual pause/resume. The extension uses the
+existing web account and a Next.js/OpenRouter action-selection fallback. The
+[extension guide](../apps/job-extension/README.md) records setup and verification;
+the [tutorial](job-extension-tutorial.md) follows the code. The items below describe
+remaining coverage and refinements, rather than an unimplemented baseline.
+
+- [ ] **Reject unrelated captured context.** Keep the current simple text reader;
+  add an acceptance rule requiring at least two distinct job-description keyword
+  groups, initially role overview, responsibilities, requirements, and qualifications.
+  Inspect rejected captures before refining the rule. Empty or rejected context
+  should retain the existing retry/skip decision.
+- [ ] **Make learned action expressions manageable.** Current learning saves only
+  an unknown manual choice after the next scan finds a form, scoped to its origin.
+  Define editable/deletable global expressions and save only after confirmed
+  submission before replacing that policy. Submission is not implemented yet.
+
 - [ ] **Build a representative inspection fixture set.** Capture sanitized DOM
   structure and expected controls, labels, required states, actions, and job text
   from this Ashby page and at least one other application site. Exclude applicant
@@ -141,17 +159,18 @@ form; the form exposes a separate "Submit Application" button.
   application from final submission. Treat `tabindex`, pointer styling, or inline
   click attributes as weak clues; no DOM scan can enumerate all delegated event
   handlers. Verify each suggested action against the resulting page state.
-- [ ] **Capture bounded job context.** From a visible Overview or description,
-  extract title, company, location, and headed description sections. Exclude
+- [ ] **Refine bounded job context when needed.** The baseline already preserves
+  a description string, source URL, and capture time. Structured title, company,
+  location, and headed sections remain future refinements. Exclude
   navigation, footer, repeated text, and applicant-entered values. Preserve the
   source URL and capture time so the form step can use the earlier description.
 - [x] **Move the inspector UI to a side panel.** The toolbar icon opens the React
   panel, which keeps the manual scan and displays the last result while open.
-- [ ] **Add multi-step panel state.** Keep the user in control of tab changes and
-  page actions while the panel shows job context, current step, field evidence,
-  and a rescan button. Store bounded per-tab snapshots temporarily so closing
-  the panel or changing routes cannot discard the description. Test same-origin
-  route changes and define behavior when `activeTab` access ends on another origin.
+- [ ] **Verify multi-step panel behavior across sites.** The panel already shows
+  context, graph steps, field evidence, and manual selection. Per-tab session
+  storage retains context; graph checkpoints last only while the panel is open.
+  Check real same-origin route changes, closure/reopening, and lost `activeTab`
+  access before adding durable graph recovery or cross-origin continuation.
 - [ ] **Evaluate model fallback for unresolved labels.** Send a small, sanitized
   DOM-derived neighborhood for only unresolved fields, batched by page, with stable
   field IDs. Compare a small text model with a cropped image plus DOM evidence when

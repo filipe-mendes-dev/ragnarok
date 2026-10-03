@@ -10,8 +10,10 @@ The web app and Python worker request embeddings from OpenRouter. Chat saves ret
 and generation details and links available citations. Production deployment and
 reliability hardening remain subsequent milestones.
 
-The separate `apps/job-extension` V0 inspects visible form fields and actions on the current
-page and shows them locally. It does not connect to the web app yet.
+The separate `apps/job-extension` reads job text and scans fields and actions in a
+Chrome side panel. A local LangGraph.js workflow finds application forms through
+deterministic action matching, a Next.js/OpenRouter fallback, and manual choice.
+It uses the main app's account session. Filling and submission remain future work.
 
 ## Documentation
 
@@ -20,7 +22,9 @@ page and shows them locally. It does not connect to the web app yet.
 - [Roadmap](docs/roadmap.md): implementation sequence and phase status.
 - [Backlog](docs/todo.md): deferred work and completion conditions.
 - [Worker guide](apps/ingestion-worker/README.md): Python setup, message processing, tests, and troubleshooting.
-- [Job extension guide](apps/job-extension/README.md): build, load, and inspect forms in Chrome.
+- [Job extension guide](apps/job-extension/README.md): build, load, inspect, and run form discovery in Chrome.
+- [Extension tutorial](docs/job-extension-tutorial.md): follow context, scanning, graph state, browser effects, and the backend request through the code.
+- [Extension backend guide](docs/job-extension-backend-first-increment.md): shared authentication, URL configuration, action probabilities, and request diagnostics.
 
 ## Local development
 

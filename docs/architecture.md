@@ -371,18 +371,62 @@ The repository separates the web app, ingestion worker, and job extension under
 `apps/`. The Chrome Manifest V3 extension scans controls and actions and displays
 local results in a React side panel. A lazily loaded LangGraph.js workflow locates
 application forms through bounded same-origin navigation, deterministic rules,
-and checkpointed manual selection. The panel injects scanner and checked-click
-functions with `chrome.scripting.executeScript`. Field detection, label resolution,
-description capture, and action detection remain separate from orchestration.
-Browser-session storage preserves job descriptions; local storage retains bounded,
+and checkpointed manual selection. Its first edge reads job text from a recognized
+description container, main content, or the page body. Empty capture pauses before
+controls scanning; the user can retry or explicitly continue without context.
+The panel injects context, scanner, and checked-click code with
+`chrome.scripting.executeScript`. Text reading, field detection,
+label resolution, and action detection remain separate from orchestration. The
+application scanner lives in `content/application/`: `scan-page.ts` coordinates
+`scan-fields.ts` and `scan-actions.ts`. The serializable `PageScan` and form
+recognition/CV rules live in `shared/page-scan.ts` and `shared/form-discovery.ts`.
+Partial form evidence continues to action discovery and reports its missing
+signal; multiple complete areas stop for review.
+Browser-session storage preserves the description string with its source URL and
+capture time; a fresh run reads context again. The fallback can include unrelated
+page text, so semantic selection remains a later refinement. Local storage retains bounded,
 exact action labels scoped to their origin. Graph checkpoints remain in panel
 memory. The service worker opens the panel and clears closed-tab context. This
 learning workflow belongs to the extension, outside the web application's two-week
-V1 scope; it adds no Python API, model calls, filling, or submission. See
-[the discovery guide](job-extension-discovery.md). When
-API-backed suggestions are added,
-the extension will need explicit web HTTP routes and an authentication/origin
-policy; moving directories does not supply those contracts. Keep `packages/`
+V1 scope; it adds no Python API, filling, or submission. See
+[the discovery guide](job-extension-discovery.md) and
+[the first context increment](job-context-first-increment.md).
+Deterministic action matching in `choose` prefers explicit apply/start/begin
+phrases over application section labels and learned phrases, using scan index
+for ties. If no recognized label matches, the graph routes
+to a separate `llmActionChoice` node, implemented by `chooseActionWithLlm`.
+An accepted model decision records `selectionSource: "llm"`. The panel makes a direct
+`POST /api/extension/select-action` request to the Next.js origin defined by
+`BETTER_AUTH_URL` in `apps/web/.env`, sending the page title and eligible action
+indexes, labels, and kinds. The local example is `http://localhost:3000`.
+The extension build reads only that public setting from the web environment,
+validates and normalizes it, and embeds it as `APP_URL`. It writes the manifest
+host permission from its scheme and hostname. The same origin configures the
+account check and web links. Changing it requires rebuilding and reloading the
+extension. The route checks `JOB_EXTENSION_ORIGIN`, rejects
+a different supplied Origin, and checks the extension-ID header. That header is
+caller identification; the existing Better Auth session authenticates the user.
+The route validates a bounded JSON body and calls the server-only
+`selectApplicationAction` function. That function uses the existing server-held
+OpenRouter key and its Decisions API with `typesafe/jev-1.13`. One request carries
+a separate Noul question for each candidate. The server selects the highest
+yes probability, using scan index for exact ties, or returns a null index if none
+reaches `0.8`. All model inference uses OpenRouter for the first version. The
+probability threshold is the initial policy, not an accuracy guarantee. The extension
+validates candidate membership and keeps the existing checked-click safeguards.
+Abstention and request failure retain manual selection. Job text and applicant
+data are not sent in this request. No separate session-check route or API client
+layer is present. Later endpoints will authenticate their own requests.
+See [the first backend increment](job-extension-backend-first-increment.md).
+The route returns a request ID shared by backend and panel logs. Provider logs
+record status, duration, every candidate's yes probability, the threshold, and
+redacted failure diagnostics.
+Development backend logs also print the exact Jev request body with its page
+title, instructions, and bounded action labels. Production logs omit that input;
+all logs omit credentials and entered applicant data. Object diagnostics use
+`console.dir` with full depth. Panel errors include
+the ID for correlation. These are console logs, without durable log storage.
+Keep `packages/`
 absent until the two TypeScript applications genuinely share code that merits a
 separate package. npm workspaces remain optional. A separate API service requires
 its own runtime or deployment need.
