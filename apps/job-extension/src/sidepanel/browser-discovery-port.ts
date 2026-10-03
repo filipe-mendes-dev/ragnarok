@@ -1,7 +1,9 @@
 import { clickScannedAction } from "../content/application/click-scanned-action";
+import { APP_URL } from "../config";
 import type { DiscoveryPort, JobContext } from "../discovery/session";
 import type { ApplicationAction, PageScan } from "../shared/page-scan";
-import { pageFingerprint } from "../shared/discovery-rules";
+import { isEligibleNavigationAction, pageFingerprint } from "../shared/discovery-rules";
+import { isNonNegativeInteger, isRecord } from "../shared/value-guards";
 import { clearJobContext, saveJobContext, saveLearnedAction } from "./discovery-storage";
 import { assertActiveTab, readJobContext, scanTab } from "./scan-active-tab";
 
@@ -61,6 +63,64 @@ export function createBrowserDiscoveryPort(tabId: number, signal: AbortSignal): 
     }
   }
 
+  async function selectActionWithLlm(page: PageScan, candidates: ApplicationAction[]): Promise<ApplicationAction | null> {
+    await assertActiveTab(tabId);
+    signal.throwIfAborted();
+    const started = performance.now();
+    const logContext = { event: "extension.action_selection.request", candidateCount: candidates.length };
+    let backendStatus: number | null = null;
+    let requestId: string | null = null;
+    console.dir({ ...logContext, level: "info", outcome: "started" }, { depth: null });
+    try {
+      const response = await fetch(`${APP_URL}/api/extension/select-action`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Ragnarok-Extension-Id": chrome.runtime.id,
+        },
+        body: JSON.stringify({
+          pageTitle: page.pageTitle.slice(0, 300),
+          actions: candidates.map((action) => ({ index: action.index, label: (action.label ?? "").slice(0, 200), kind: action.kind })),
+        }),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+        cache: "no-store",
+        redirect: "error",
+      });
+      backendStatus = response.status;
+      requestId = response.headers.get("X-Request-Id");
+      signal.throwIfAborted();
+      if (response.status === 401) throw new Error("Sign in to RAGnarok in this Chrome profile, then restart discovery to use LLM action selection.");
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        const message = isRecord(result) && typeof result.errorMessage === "string" ? result.errorMessage : "Action selection failed.";
+        throw new Error(message);
+      }
+      if (!isRecord(result)) throw new Error("Invalid action-selection response.");
+      if (typeof result.probability !== "number" || !Number.isFinite(result.probability) || result.probability < 0 || result.probability > 1) {
+        throw new Error("Invalid action-selection probability.");
+      }
+      if (result.actionIndex === null) {
+        console.dir({ ...logContext, level: "info", outcome: "manual_required", requestId, backendStatus, latencyMs: Math.round(performance.now() - started), actionIndex: null, probability: result.probability }, { depth: null });
+        return null;
+      }
+      if (!isNonNegativeInteger(result.actionIndex)) throw new Error("Invalid selected action index.");
+      const action = candidates.find((candidate) => candidate.index === result.actionIndex);
+      if (!action || !isEligibleNavigationAction(action)) throw new Error("The LLM selected an action outside the eligible candidates.");
+      await assertActiveTab(tabId);
+      signal.throwIfAborted();
+      console.dir({ ...logContext, level: "info", outcome: "selected", requestId, backendStatus, latencyMs: Math.round(performance.now() - started), actionIndex: action.index, probability: result.probability }, { depth: null });
+      return action;
+    } catch (error: unknown) {
+      console.dir({ ...logContext, level: "error", outcome: "failed", requestId, backendStatus, latencyMs: Math.round(performance.now() - started), causeName: error instanceof Error ? error.name : typeof error, cancelled: signal.aborted }, { depth: null });
+      signal.throwIfAborted();
+      const message = backendStatus === null
+        ? `Could not reach the action-selection API within 12 seconds. Check that RAGnarok is running at ${APP_URL}.`
+        : error instanceof Error ? error.message : "Action selection failed.";
+      throw new Error(requestId ? `${message} Request ID: ${requestId}.` : message);
+    }
+  }
+
   async function click(page: PageScan, action: ApplicationAction): Promise<void> {
     await assertActiveTab(tabId);
     signal.throwIfAborted();
@@ -96,5 +156,5 @@ export function createBrowserDiscoveryPort(tabId: number, signal: AbortSignal): 
   }
 
   async function saveContext(context: JobContext): Promise<void> { await saveJobContext(tabId, context); }
-  return { readContext, scan, click, waitForChange, saveContext, clearContext: () => clearJobContext(tabId), learnAction: saveLearnedAction };
+  return { readContext, scan, selectActionWithLlm, click, waitForChange, saveContext, clearContext: () => clearJobContext(tabId), learnAction: saveLearnedAction };
 }
