@@ -85,6 +85,20 @@
       "when": 1790531198231,
       "tag": "0011_add-openrouter-embeddings",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791039732816,
+      "tag": "0012_add-document-owner-constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791039743078,
+      "tag": "0013_add-applicant-data",
+      "breakpoints": true
     }
   ]
 }

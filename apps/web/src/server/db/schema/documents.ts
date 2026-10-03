@@ -7,6 +7,7 @@ import {
     pgTable,
     text,
     timestamp,
+    unique,
     uniqueIndex,
     uuid,
 } from "drizzle-orm/pg-core";
@@ -54,6 +55,7 @@ export const document = pgTable(
             table.userId,
             table.createdAt,
         ),
+        unique("document_user_id_id_unique").on(table.userId, table.id),
         uniqueIndex("document_storage_key_idx").on(table.storageKey),
         check("document_title_not_blank", sql`length(btrim(${table.title})) > 0`),
         check("document_size_bytes_positive", sql`${table.sizeBytes} > 0`),

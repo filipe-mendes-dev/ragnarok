@@ -1,0 +1,1 @@
+ALTER TABLE "document" ADD CONSTRAINT "document_user_id_id_unique" UNIQUE("user_id","id");
