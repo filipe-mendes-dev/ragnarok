@@ -21,6 +21,7 @@
 - Prefer interfaces unless a union, mapped type, or inference provides a concrete reason for a type alias.
 - Prefer small named functions for application behavior and arrow functions for callbacks.
 - Keep untrusted boundaries runtime-validated and public inputs/outputs explicitly typed.
+- Use `console.dir(object, { depth: null })` for object diagnostics so nested data stays readable. Do not stringify objects solely for logging. Include a `level` field when severity matters. Never log API keys, authorization headers, or session cookies; keep requested model-input diagnostics in development backend logs.
 
 ## Architecture
 
@@ -30,6 +31,7 @@
 - Services own workflows, business rules, typed domain errors, and multi-repository transactions.
 - Repositories own persistence queries and DB-facing shapes; they do not encode user workflows.
 - Keep retrieval and generation separate. Apply user authorization inside persistence and retrieval queries.
+- For the first version, route all model inference through OpenRouter, including embeddings, text generation, classification, tool selection, and Jev decisions. Do not call model vendors directly or add another gateway unless the user changes this decision. Keep `OPENROUTER_API_KEY` server-side.
 - Use DTOs only at real boundaries and expose the minimum safe, serializable fields.
 - Avoid mixed client/server barrel files. Small component barrels are optional.
 - The worker entry point delegates to ingestion services; it must not contain the ingestion workflow itself.
