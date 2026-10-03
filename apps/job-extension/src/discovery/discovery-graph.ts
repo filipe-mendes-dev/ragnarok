@@ -27,6 +27,7 @@ import {
     routeAfterContextDecision,
     routeAfterAssessment,
     routeAfterClick,
+    routeAfterLlmSelection,
     routeAfterManualSelection,
     routeAfterPageWait,
     routeAfterScan,
@@ -227,13 +228,13 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
             manualResponse: null,
             stage: 'choose',
         };
-        if (!choice.action)
+        if (choice.action)
             return {
                 session: {
                     ...updated,
-                    status: 'paused',
-                    pauseReason: 'action',
-                    message: 'No unique keyword match. Choose an action to resume the graph.',
+                    status: 'running',
+                    pauseReason: null,
+                    message: `Selected '${choice.action.label}' using ${choice.source} matching.`,
                 },
             };
         return {
@@ -241,9 +242,48 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
                 ...updated,
                 status: 'running',
                 pauseReason: null,
-                message: `Selected '${choice.action.label}' using ${choice.source} matching.`,
+                message: 'No keyword or learned match. Asking the LLM to evaluate application actions.',
             },
         };
+    }
+
+    async function chooseActionWithLlm({ session }: GraphState): Promise<GraphState> {
+        if (!hasPageScan(session))
+            return stopped(session, 'llmActionChoice', 'No page scan is available.');
+        if (session.candidates.length === 0)
+            return stopped(session, 'llmActionChoice', 'No eligible navigation actions are available for the LLM.');
+        const updated: DiscoverySession = { ...session, stage: 'llmActionChoice' };
+        try {
+            const action = await port.selectActionWithLlm(session.scan, session.candidates);
+            if (!action)
+                return {
+                    session: {
+                        ...updated,
+                        status: 'paused',
+                        pauseReason: 'action',
+                        message: 'No action reached the application probability threshold. Choose an action to resume the graph.',
+                    },
+                };
+            return {
+                session: {
+                    ...updated,
+                    selectedAction: action,
+                    selectionSource: 'llm',
+                    status: 'running',
+                    pauseReason: null,
+                    message: `Selected '${action.label}' using the LLM.`,
+                },
+            };
+        } catch (error: unknown) {
+            return {
+                session: {
+                    ...updated,
+                    status: 'paused',
+                    pauseReason: 'action',
+                    message: `${errorMessage(error)} Choose an action manually to resume the graph.`,
+                },
+            };
+        }
     }
 
     function manualSelection({ session }: GraphState): GraphState {
@@ -366,6 +406,7 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
         .addNode('scan', scanPage)
         .addNode('assess', assessForm)
         .addNode('choose', chooseAction)
+        .addNode('llmActionChoice', chooseActionWithLlm)
         .addNode('manual', manualSelection)
         .addNode('click', clickAction)
         .addNode('wait', waitForPage)
@@ -394,6 +435,11 @@ export function createDiscoveryGraph(port: DiscoveryPort) {
         .addConditionalEdges(
             'choose',
             routeAfterActionSelection,
+            [END, 'click', 'llmActionChoice'],
+        )
+        .addConditionalEdges(
+            'llmActionChoice',
+            routeAfterLlmSelection,
             [END, 'click', 'manual'],
         )
         .addConditionalEdges(

@@ -17,7 +17,7 @@ export interface DiscoverySession {
   assessment: FormAssessment | null;
   candidates: ApplicationAction[];
   selectedAction: ApplicationAction | null;
-  selectionSource: "keyword" | "learned" | "manual" | null;
+  selectionSource: "keyword" | "learned" | "llm" | "manual" | null;
   manualResponse: number | null;
   clicks: number;
   visited: string[];
@@ -30,6 +30,7 @@ export interface DiscoverySession {
 export interface DiscoveryPort {
   readContext(): Promise<JobContext | null>;
   scan(): Promise<PageScan>;
+  selectActionWithLlm(scan: PageScan, candidates: ApplicationAction[]): Promise<ApplicationAction | null>;
   click(scan: PageScan, action: ApplicationAction): Promise<void>;
   waitForChange(scan: PageScan): Promise<void>;
   saveContext(context: JobContext): Promise<void>;

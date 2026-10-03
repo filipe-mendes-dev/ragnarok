@@ -29,7 +29,13 @@ export function routeAfterAssessment({ session }: DiscoveryRouteState): typeof E
   return "choose";
 }
 
-export function routeAfterActionSelection({ session }: DiscoveryRouteState): typeof END | "click" | "manual" {
+export function routeAfterActionSelection({ session }: DiscoveryRouteState): typeof END | "click" | "llmActionChoice" {
+  if (isDiscoveryStopped(session)) return END;
+  if (hasSelectedAction(session)) return "click";
+  return "llmActionChoice";
+}
+
+export function routeAfterLlmSelection({ session }: DiscoveryRouteState): typeof END | "click" | "manual" {
   if (isDiscoveryStopped(session)) return END;
   if (hasSelectedAction(session)) return "click";
   return "manual";
